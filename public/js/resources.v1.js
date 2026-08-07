@@ -1,0 +1,1 @@
+window.__resources={"assets/audio/notification-1.mp3":"assets/audio/notification-1.mp3","assets/audio/notification-2.mp3":"assets/audio/notification-2.mp3","assets/vendor/react.v1.js":"assets/vendor/react.v1.js","assets/vendor/react-dom.v1.js":"assets/vendor/react-dom.v1.js"};

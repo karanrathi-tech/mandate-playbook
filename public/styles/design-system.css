@@ -1,0 +1,183 @@
+/* ============================================================
+   Anarock Residential Design System — Tokens
+   Color + type tokens extracted from the Figma source of truth.
+   ============================================================ */
+
+/* Graphik — licensed brand typeface, dropped in by the user. */
+@font-face { font-family: "Graphik"; font-weight: 100; font-style: normal;  src: url("assets/fonts/graphik-01.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 100; font-style: italic;  src: url("assets/fonts/graphik-02.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 200; font-style: normal;  src: url("assets/fonts/graphik-03.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 200; font-style: italic;  src: url("assets/fonts/graphik-04.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 300; font-style: normal;  src: url("assets/fonts/graphik-05.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 300; font-style: italic;  src: url("assets/fonts/graphik-06.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 400; font-style: normal;  src: url("assets/fonts/graphik-07.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 400; font-style: italic;  src: url("assets/fonts/graphik-08.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 500; font-style: normal;  src: url("assets/fonts/graphik-09.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 500; font-style: italic;  src: url("assets/fonts/graphik-10.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 600; font-style: normal;  src: url("assets/fonts/graphik-11.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 600; font-style: italic;  src: url("assets/fonts/graphik-12.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 700; font-style: normal;  src: url("assets/fonts/graphik-13.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 700; font-style: italic;  src: url("assets/fonts/graphik-14.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 800; font-style: normal;  src: url("assets/fonts/graphik-15.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 800; font-style: italic;  src: url("assets/fonts/graphik-16.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 900; font-style: normal;  src: url("assets/fonts/graphik-17.otf") format("opentype"); }
+@font-face { font-family: "Graphik"; font-weight: 900; font-style: italic;  src: url("assets/fonts/graphik-18.otf") format("opentype"); }
+
+:root {
+  /* ── Brand / Primary (Violet) ────────────────────────── */
+  --violet-darker:   #4040BA;
+  --violet-dark:     #5656ED;
+  --violet:          #6161FF;   /* base */
+  --violet-light:    #7070FF;
+  --violet-lighter:  #C0C0FF;
+  --violet-lightest: #E8E8FF;
+
+  /* ── Gray Palette ────────────────────────────────────── */
+  --gray-darker:    #101721;
+  --gray-dark:      #6B7785;   /* secondary text */
+  --gray:           #9FA6B0;   /* placeholder, disabled text */
+  --gray-light:     #E0E0E0;   /* borders */
+  --gray-lighter:   #EDEDED;
+  --gray-disabled:  #F3F3F3;
+  --gray-lightest:  #F7F7F9;   /* surface tint */
+  --white:          #FFFFFF;
+
+  /* ── Semantic / Secondary ────────────────────────────── */
+  --yellow:         #F3AA07;
+  --yellow-light:   #FDF2DA;
+  --blue:           #1F69FF;
+  --blue-light:     #DDE8FF;
+  --emerald:        #10AC60;
+  --emerald-light:  #DBF3E7;
+  --red:            #D32F02;
+  --red-dark:       #BD2900;
+  --red-light:      #F9E0D9;
+
+  /* ── Extended ────────────────────────────────────────── */
+  --pink:           #DC4276;
+  --pink-light:     #FBDEE8;
+  --teal:           #47C1BF;
+  --teal-light:     #E4F6F6;
+  --coral:          #ED754B;
+  --coral-light:    #FDEBE4;
+  --jade:           #4BB952;
+  --jade-light:     #E3F4E5;
+  --purple-dynamic:       #9254E3;
+  --purple-dynamic-light: #EFE6FB;
+
+  /* ── Foreground (text) ───────────────────────────────── */
+  --fg-1:        rgba(16, 23, 33, 0.94);  /* primary text #101721 @ 94% */
+  --fg-1-solid:  #101721;
+  --fg-2:        #6B7785;                  /* secondary */
+  --fg-3:        #9FA6B0;                  /* tertiary / placeholder */
+  --fg-link:     #6161FF;
+  --fg-on-primary: #FFFFFF;
+  --fg-error:    #D32F02;
+  --fg-success:  #10AC60;
+
+  /* ── Background / Surface ────────────────────────────── */
+  --bg-app:        #F2F2F2;
+  --bg-canvas:     #FFFFFF;
+  --bg-subtle:     #F7F7F9;
+  --bg-muted:      #EDEDED;
+  --bg-hover:      #F7F7F9;
+  --bg-tint-violet: #E8E8FF;
+
+  /* ── Borders ─────────────────────────────────────────── */
+  --border:        #E0E0E0;
+  --border-strong: #9FA6B0;
+  --border-focus:  #7070FF;
+  --border-error:  #D32F02;
+
+  /* ── Radius ──────────────────────────────────────────── */
+  --radius-xs: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-12: 12px;
+  --radius-xl: 16px;
+  --radius-20: 20px;
+  --radius-24: 24px;
+  --radius-pill: 999px;
+
+  /* ── Spacing scale (4-pt) ────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 50px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* ── Elevation (Figma "Elevations" — named levels 0-3) ─── */
+  /* E0: no shadow, just a hairline border */
+  --elevation-0: 0px 0px 1px 0px rgb(159,166,176);
+  /* E1: slightly raised — CP cards on a dashboard */
+  --elevation-1: 0px 1px 2px 0px rgba(16,23,33,0.12), 0px 0px 1px 0px rgba(16,23,33,0.2);
+  /* E2: content scrolling beneath headers / tabs */
+  --elevation-2: 0px 0px 2px 0px rgba(16,23,33,0.08), 0px 0px 8px 0px rgba(16,23,33,0.16);
+  /* E3: modals, dropdowns, toasts, inline dialogs overlaying the UI */
+  --elevation-3: 0px 0px 4px 0px rgba(16,23,33,0.08), 0px 8px 16px 0px rgba(16,23,33,0.16);
+
+  /* Aliases (legacy names kept for existing components) */
+  --shadow-1: var(--elevation-2);
+  --shadow-2: var(--elevation-3);
+  --shadow-card: var(--elevation-1);
+  --shadow-focus-ring: 0 0 0 3px rgba(97,97,255,.16);
+
+  /* ── Typography — base ───────────────────────────────── */
+  --font-sans: "Graphik", "Inter", "Roboto", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Anarock's type system uses an H + B + ST stack.
+     Sizes lifted from the Figma legend on the Typography card. */
+  --type-h1-size: 24px;     --type-h1-weight: 600;  --type-h1-line: 32px;
+  --type-h2-size: 20px;     --type-h2-weight: 600;  --type-h2-line: 28px;
+  --type-h3-size: 18px;     --type-h3-weight: 500;  --type-h3-line: 24px;
+
+  --type-b1-size: 16px;     --type-b1-weight: 500;  --type-b1-line: 22px;
+  --type-b2-size: 14px;     --type-b2-weight: 500;  --type-b2-line: 18px;
+  --type-b3-size: 12px;     --type-b3-weight: 500;  --type-b3-line: 16px;
+
+  --type-st1-size: 14px;    --type-st1-weight: 400; --type-st1-line: 20px;
+  --type-st2-size: 12px;    --type-st2-weight: 400; --type-st2-line: 16px;
+  --type-st3-size: 16px;    --type-st3-weight: 500; --type-st3-line: 20px;
+  --type-st4-size: 12px;    --type-st4-weight: 500; --type-st4-line: 14px;
+  --type-st5-size: 10px;    --type-st5-weight: 400; --type-st5-line: 14px;
+
+  /* Display — used very sparingly (e.g. Colors hero is 48/Black) */
+  --type-display-size: 48px; --type-display-weight: 900; --type-display-line: 100%;
+}
+
+/* ── Semantic typography utilities ────────────────────── */
+.h1, h1.an { font-family: var(--font-sans); font-weight: var(--type-h1-weight); font-size: var(--type-h1-size); line-height: var(--type-h1-line); color: var(--fg-1); }
+.h2, h2.an { font-family: var(--font-sans); font-weight: var(--type-h2-weight); font-size: var(--type-h2-size); line-height: var(--type-h2-line); color: var(--fg-1); }
+.h3, h3.an { font-family: var(--font-sans); font-weight: var(--type-h3-weight); font-size: var(--type-h3-size); line-height: var(--type-h3-line); color: var(--fg-1); }
+
+.b1 { font-family: var(--font-sans); font-weight: var(--type-b1-weight); font-size: var(--type-b1-size); line-height: var(--type-b1-line); color: var(--fg-1); }
+.b2 { font-family: var(--font-sans); font-weight: var(--type-b2-weight); font-size: var(--type-b2-size); line-height: var(--type-b2-line); color: var(--fg-1); }
+.b3 { font-family: var(--font-sans); font-weight: var(--type-b3-weight); font-size: var(--type-b3-size); line-height: var(--type-b3-line); color: var(--fg-1); }
+
+.st1 { font-family: var(--font-sans); font-weight: var(--type-st1-weight); font-size: var(--type-st1-size); line-height: var(--type-st1-line); color: var(--fg-2); }
+.st2 { font-family: var(--font-sans); font-weight: var(--type-st2-weight); font-size: var(--type-st2-size); line-height: var(--type-st2-line); color: var(--fg-2); }
+.st3 { font-family: var(--font-sans); font-weight: var(--type-st3-weight); font-size: var(--type-st3-size); line-height: var(--type-st3-line); color: var(--fg-1); }
+.st4 { font-family: var(--font-sans); font-weight: var(--type-st4-weight); font-size: var(--type-st4-size); line-height: var(--type-st4-line); color: var(--fg-2); }
+.st5 { font-family: var(--font-sans); font-weight: var(--type-st5-weight); font-size: var(--type-st5-size); line-height: var(--type-st5-line); color: var(--fg-3); }
+
+.fg-1 { color: var(--fg-1); }
+.fg-2 { color: var(--fg-2); }
+.fg-3 { color: var(--fg-3); }
+.fg-link { color: var(--fg-link); }
+
+body.an, .an-root {
+  font-family: var(--font-sans);
+  color: var(--fg-1);
+  background: var(--bg-canvas);
+  font-feature-settings: "ss01", "cv01";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Button loading spinner */
+@keyframes anrk-btn-spin { to { transform: rotate(360deg); } }
