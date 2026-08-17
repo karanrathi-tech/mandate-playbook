@@ -263,8 +263,8 @@ class Component extends DCLogic {
   }
   editFromView(){ const id=this.state.drawer.taskId; this.openEdit(id); }
   setD(k,v){ this.setState(s=>{ const draft=s.draft||{}; if(k==='status'&&v==='unassigned'&&draft.primary) v='not_started'; return {draft:{...draft,[k]:v,error:''}}; }); }
-  setStartDate(v){ this.setState(s=>{ const draft=s.draft||{}, isCreating=!!(s.drawer&&s.drawer.mode==='add'), start=(isCreating&&v<this.NOW)?this.NOW:v, due=(!draft.due||draft.due<start)?start:draft.due; return {draft:{...draft,start,due,error:''}}; }); }
-  setDueDate(v){ this.setState(s=>{ const draft=s.draft||{}, minimum=draft.start&&draft.start>this.NOW?draft.start:this.NOW, due=v<minimum?minimum:v; return {draft:{...draft,due,error:''}}; }); }
+  setStartDate(v){ this.setState(s=>{ const draft=s.draft||{}, due=(!draft.due||draft.due<v)?v:draft.due; return {draft:{...draft,start:v,due,error:''}}; }); }
+  setDueDate(v){ this.setState(s=>({draft:{...(s.draft||{}),due:v,error:''}})); }
   categoryNames(){
     const names=[...this.WS,...this.tasks.map(t=>t&&t.ws).filter(Boolean)];
     return names.filter((name,index)=>names.findIndex(other=>other.trim().toLocaleLowerCase()===name.trim().toLocaleLowerCase())===index);
@@ -338,8 +338,6 @@ class Component extends DCLogic {
       else if(incompleteSubtask) err='Complete both the sub-task name and owner, or remove that sub-task.';
       else if(this.state.drawer.mode==='add' && !d.start) err='Start date is required.';
       else if(!d.due) err='Due date is required.';
-      else if(d.due < this.NOW) err='Due date must be today or later.';
-      else if(this.state.drawer.mode==='add' && d.start && d.start < this.NOW) err='Start date cannot be in the past.';
       else if(d.start && d.due && d.due < d.start) err='Due date cannot be before the start date.';
       else if(!d.status) err='Status is required.';
       else if(!d.prio) err='Priority is required.';
@@ -2254,7 +2252,7 @@ class Component extends DCLogic {
           V.addPrimaryLabel=_astep===1?'Next':'Save Task';
           V.addPrimaryAction=_astep===1?(()=>this.addNext()):(()=>this.saveDraft());
           V.setWv=v=>this.setCategoryValue(v); V.setWsSelect=e=>this.setCategoryValue(e.target.value); V.setPrimarySelect=e=>this.setPrimaryAndDepartment(e.target.value); V.setStatusSelect=e=>this.setD('status',e.target.value); V.setPrioSelect=e=>this.setD('prio',e.target.value); V.setPriov=v=>this.setD('prio',v); V.setPrimaryv=v=>this.setPrimaryAndDepartment(v); V.setStatusv=v=>this.setD('status',v);
-          { const _sd=d.start||this.NOW; V.dDueMin=_sd>this.NOW?_sd:this.NOW; }
+          { const _today=this.realToday(), _sd=d.start||_today; V.dDueMin=_sd>_today?_sd:_today; }
           V.setMandateSelect=e=>this.setD('mandateId',e.target.value);
           V.setMandateV=v=>{
             if(this.mandateSelectTimer) clearTimeout(this.mandateSelectTimer);
@@ -2323,7 +2321,7 @@ class Component extends DCLogic {
         V.dRevisedStyle= revisedEnabled?inp:inpDis;
         V.dRemarkStyle= remarkEnabled?'width:100%;min-height:64px;border:1px solid #E0E0E0;border-radius:4px;padding:11px 14px;font-size:14px;font-family:inherit;outline:0;resize:vertical':'width:100%;min-height:64px;border:1px solid #EEE;border-radius:4px;padding:11px 14px;font-size:14px;font-family:inherit;outline:0;resize:vertical;background:#F7F7F7;color:var(--gray)';
         V.dTextareaStyle= coreEnabled?'width:100%;min-height:60px;border:1px solid #E0E0E0;border-radius:4px;padding:11px 14px;font-size:14px;font-family:inherit;outline:0;resize:vertical':'width:100%;min-height:60px;border:1px solid #EEE;border-radius:4px;padding:11px 14px;font-size:14px;font-family:inherit;outline:0;resize:vertical;background:#F7F7F7;color:var(--gray)';
-        V.dWs=d.ws; V.dName=d.name; V.dPrio=d.prio; V.dDesc=d.desc; V.dStart=d.start||this.NOW; V.startDateMin=dw.mode==='add'?this.NOW:''; V.dDue=d.due; V.dRevised=d.revised; V.dStatus=d.status; V.dPrimary=d.primary; V.dRemark=d.remark; V.dClosing=d.closeRemark||''; V.dFail=!!d.fail;
+        V.dWs=d.ws; V.dName=d.name; V.dPrio=d.prio; V.dDesc=d.desc; V.dStart=d.start||this.realToday(); V.startDateMin=dw.mode==='add'?this.realToday():''; V.dDue=d.due; V.dRevised=d.revised; V.dStatus=d.status; V.dPrimary=d.primary; V.dRemark=d.remark; V.dClosing=d.closeRemark||''; V.dFail=!!d.fail;
         const validateRequired=!!d.validationAttempted;
         V.mandateMissing=dw.mode==='add'&&validateRequired&&!String(d.mandateId||'').trim();
         V.categoryMissing=validateRequired&&coreEnabled&&!String(d.ws||'').trim();
@@ -2362,10 +2360,6 @@ class Component extends DCLogic {
         V.spocDDOptions=[{value:'',label:'Select employee…'}].concat(this.OWNERS.map(o=>({value:o,label:o})));
         V.statusDDOptions=(d.primary?[]:[{value:'unassigned',label:'Unassigned'}]).concat([{value:'not_started',label:'Pending'},{value:'in_progress',label:'In Progress'},{value:'blocked',label:'Blocked'},{value:'completed',label:'Done'}]);
         V.deptDDOptions=[{value:'',label:'Select department'}].concat(['Technology','Marketing','Strategic Development Initiative','CEO Office','Operations','Sales','Chairman Office','Legal','Admin','CTO Office','Call Center','Research','Corporate Sales','Vice Chairman Office','Finance','Transaction Services','HR','Transport'].map(x=>({value:x,label:x})));
-        V.departmentNode=React.createElement('select',{
-          value:V.dDept,onChange:e=>this.setD('dept',e.target.value),
-          style:{width:'100%',height:46,border:'1px solid #E0E0E0',borderRadius:4,padding:'0 38px 0 14px',font:'500 14px/18px Graphik,Inter,system-ui,sans-serif',outline:0,color:'rgba(16,23,33,.94)',background:'#fff',cursor:'pointer'}
-        },V.deptDDOptions.map(o=>React.createElement('option',{key:o.value,value:o.value},o.label)));
         V.today=this.NOW;
         V.wsOptions=this.WS; V.ownerOptions=this.OWNERS;
         V.setW=e=>this.setD('ws',e.target.value); V.setName=e=>this.setD('name',e.target.value);
