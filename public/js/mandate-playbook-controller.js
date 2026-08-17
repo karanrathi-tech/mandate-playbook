@@ -601,14 +601,38 @@ class Component extends DCLogic {
   startGanttResize(id, edge, e, dayW, base){
     try{ e.preventDefault(); e.stopPropagation(); }catch(_){}
     const DAY=86400000;
-    const ov=(this.state.ganttOverride||{})[id]||{start:base.start,end:base.end};
+    const previousOverride=(this.state.ganttOverride||{})[id]||null;
+    const ov=previousOverride||{start:base.start,end:base.end};
     const s0=ov.start, e0=ov.end, startX=e.clientX;
+    let latest={start:s0,end:e0};
     this.setState({ganttHover:id});
     const move=(ev)=>{ const dd=Math.round((ev.clientX-startX)/dayW); let ns=s0, ne=e0;
       if(edge==='start') ns=Math.min(s0+dd*DAY, e0-DAY); else ne=Math.max(e0+dd*DAY, s0+DAY);
+      latest={start:ns,end:ne};
       this.setState(st=>({ganttOverride:{...st.ganttOverride,[id]:{start:ns,end:ne}}})); };
-    const up=()=>{ document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); };
+    const up=()=>{
+      document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up);
+      if(latest.start===s0&&latest.end===e0) return;
+      this.setState({timelineDateModal:{id,edge,oldStart:s0,oldEnd:e0,newStart:latest.start,newEnd:latest.end,previousOverride}});
+    };
     document.addEventListener('mousemove',move); document.addEventListener('mouseup',up);
+  }
+  ganttDate(ms){ const d=new Date(ms); return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0'); }
+  cancelTimelineDateChange(){
+    const md=this.state.timelineDateModal; if(!md) return;
+    this.setState(s=>{ const next={...(s.ganttOverride||{})}; if(md.previousOverride) next[md.id]=md.previousOverride; else delete next[md.id]; return {ganttOverride:next,timelineDateModal:null}; });
+  }
+  confirmTimelineDateChange(){
+    const md=this.state.timelineDateModal; if(!md) return;
+    const t=this.tasks.find(x=>x.id===md.id);
+    if(t){
+      const oldDue=t.due, nextStart=this.ganttDate(md.newStart), nextEnd=this.ganttDate(md.newEnd);
+      t.start=nextStart;
+      if(t.revised) t.revised=nextEnd; else t.due=nextEnd;
+      if(!t.revised&&oldDue!==nextEnd){ t.dueChanges=t.dueChanges||[]; t.dueChanges.push({from:oldDue,to:nextEnd,by:this.roleName()||'Team Lead',when:this.fmt(this.realToday())+' · just now'}); }
+    }
+    this.setState({timelineDateModal:null});
+    this.toast('Timeline dates updated','success');
   }
   timelineData(filtered){
     const S=this.STATUS, DAY=86400000;
@@ -618,7 +642,7 @@ class Component extends DCLogic {
     const dayW=zoom==='quarters'?4:(zoom==='months'?9:34);
     const durByPrio={high:6,medium:4,low:3};
     let ds=[today];
-    filtered.forEach(t=>{ ds.push(parse(t.due)); if(t.revised)ds.push(parse(t.revised)); ds.push(parse(t.due)-(durByPrio[t.prio]||4)*DAY); });
+    filtered.forEach(t=>{ ds.push(parse(t.due)); if(t.revised)ds.push(parse(t.revised)); ds.push(t.start?parse(t.start):parse(t.due)-(durByPrio[t.prio]||4)*DAY); });
     let minD=Math.min(...ds)-3*DAY, maxD=Math.max(...ds)+6*DAY;
     const dow0=new Date(minD).getUTCDay(); minD-=((dow0+6)%7)*DAY;
     const totalDays=Math.round((maxD-minD)/DAY)+1;
@@ -642,7 +666,7 @@ class Component extends DCLogic {
         if(this.isOverdue(task)) return {bg:'var(--red-light)',fg:'var(--red)'}; return {bg:'#E7F0FE',fg:'#2f6fdb'}; };
       filtered.forEach(t=>{
         const baseEnd=parse(t.revised||t.due);
-        let baseStart=parse(t.due)-(durByPrio[t.prio]||4)*DAY;
+        let baseStart=t.start?parse(t.start):parse(t.due)-(durByPrio[t.prio]||4)*DAY;
         if(baseStart>=baseEnd) baseStart=baseEnd-2*DAY;
         const ov=(this.state.ganttOverride||{})[t.id];
         const start = ov?ov.start:baseStart, end = ov?ov.end:baseEnd;
@@ -1907,7 +1931,7 @@ class Component extends DCLogic {
           startLabel:this.fmt(t.start),
           // inline due-date edit (click cell → native calendar): Team Lead / P&L Head change the due date directly;
           // BSM / Dev use the same calendar affordance to set a revised date (with a mandatory reason).
-          canEditDue: canEditDateCell, showDueIcon: true,
+          canEditDue: canEditDateCell, showDueIcon: !locked,
           dueEditing: st.dueEdit===t.id, dueViewMode: st.dueEdit!==t.id,
           dueTitle: canEditDueReal ? 'Click to change due date' : canEditRevisedInline ? 'Click to set a revised date' : locked ? 'Completed and locked — reopen to change the date.' : (m&&m.closed) ? 'Mandate is launched — the checklist is locked.' : '',
           onDueClick: canEditDateCell ? ((e)=>this.startDueEdit(t.id,e,canEditDueReal?t.due:(t.revised||t.due))) : (()=>{}),
@@ -2591,6 +2615,32 @@ class Component extends DCLogic {
         React.createElement('button',{type:'button',onClick:V.onClosePriority,style:{height:40,padding:'0 18px',borderRadius:4,font:'500 13px/1 Graphik,Inter,sans-serif',cursor:'pointer',border:'1px solid #E0E0E0',background:'#fff',color:'#6B7785'}},'Cancel'),
         React.createElement('span',{style:{flex:1}}),
         React.createElement('button',{type:'button',onClick:changed?V.onConfirmPriority:undefined,disabled:!changed,style:{height:40,padding:'0 20px',borderRadius:4,font:'600 13px/1 Graphik,Inter,sans-serif',cursor:changed?'pointer':'not-allowed',border:'none',background:changed?'var(--violet)':'#F3F3F3',color:changed?'#fff':'#9FA6B0'}},'Change Priority')
+      );
+    }
+    const tdm=st.timelineDateModal;
+    V.timelineDateModalOpen=!!tdm;
+    if(tdm){
+      const parentId=String(tdm.id||'').split('::')[0];
+      const t=this.tasks.find(x=>x.id===parentId)||{};
+      V.timelineDateTaskName=t.name||'Task';
+      V.timelineDateChangeLabel=tdm.edge==='start'?'Start date':'Due / revised date';
+      V.timelineOldStart=this.fmt(this.ganttDate(tdm.oldStart));
+      V.timelineNewStart=this.fmt(this.ganttDate(tdm.newStart));
+      V.timelineOldEnd=this.fmt(this.ganttDate(tdm.oldEnd));
+      V.timelineNewEnd=this.fmt(this.ganttDate(tdm.newEnd));
+      V.timelineStartChanged=tdm.oldStart!==tdm.newStart;
+      V.timelineEndChanged=tdm.oldEnd!==tdm.newEnd;
+      V.timelineStartUnchanged=!V.timelineStartChanged;
+      V.timelineEndUnchanged=!V.timelineEndChanged;
+      V.timelineNewStartStyle='font-size:13px;font-weight:600;color:'+(V.timelineStartChanged?'var(--violet)':'rgba(16,23,33,.94)');
+      V.timelineNewEndStyle='font-size:13px;font-weight:600;color:'+(V.timelineEndChanged?'var(--violet)':'rgba(16,23,33,.94)');
+      V.onCancelTimelineDate=()=>this.cancelTimelineDateChange();
+      V.onConfirmTimelineDate=()=>this.confirmTimelineDateChange();
+      V.timelineDateBodyStyle={flex:'0 0 260px',height:260,overflow:'auto',padding:'0 24px 24px',display:'flex',flexDirection:'column'};
+      V.timelineDateFooterNode=React.createElement(React.Fragment,null,
+        React.createElement('button',{type:'button',onClick:V.onCancelTimelineDate,style:{height:40,padding:'0 18px',borderRadius:4,font:'500 13px/1 Graphik,Inter,sans-serif',cursor:'pointer',border:'1px solid #E0E0E0',background:'#fff',color:'#6B7785'}},'Cancel'),
+        React.createElement('span',{style:{flex:1}}),
+        React.createElement('button',{type:'button',onClick:V.onConfirmTimelineDate,style:{height:40,padding:'0 20px',borderRadius:4,font:'600 13px/1 Graphik,Inter,sans-serif',cursor:'pointer',border:'none',background:'var(--violet)',color:'#fff'}},'Confirm Date Change')
       );
     }
 
