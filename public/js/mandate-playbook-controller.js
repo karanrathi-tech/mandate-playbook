@@ -826,12 +826,7 @@ class Component extends DCLogic {
     }
     else if(sm.kind==='unassign'){
       const task=this.tasks.find(x=>x.id===sm.id); if(!task) return;
-      task.primary=''; task.primaryOwnerId=''; task.dept='';
-      this.applyStatus(sm.id,'unassigned',{reopenReason:sm.reopenReason});
-    }
-    else {
-      const task=this.tasks.find(x=>x.id===sm.id);
-      if(!task||!sm.reopenOwner){ this.setState(s=>({statusModal:{...s.statusModal,error:'Please select a task owner or No owner.'}})); return; }
+      if(!sm.reopenOwner){ this.setState(s=>({statusModal:{...s.statusModal,error:'Please select a task owner or No owner.'}})); return; }
       if(sm.reopenOwner==='__no_owner__'){
         task.primary=''; task.primaryOwnerId=''; task.dept='';
         this.applyStatus(sm.id,'unassigned',{reopenReason:sm.reopenReason});
@@ -839,8 +834,11 @@ class Component extends DCLogic {
         const owner=this.EMPLOYEES.find(e=>e.name===sm.reopenOwner);
         if(!owner){ this.setState(s=>({statusModal:{...s.statusModal,error:'Please select a valid task owner.'}})); return; }
         task.primary=owner.name; task.primaryOwnerId=owner.id; task.dept=owner.department||owner.dept||'';
-        this.applyStatus(sm.id,sm.target==='unassigned'?'not_started':sm.target,{reopenReason:sm.reopenReason});
+        this.applyStatus(sm.id,'not_started',{reopenReason:sm.reopenReason});
       }
+    }
+    else {
+      this.applyStatus(sm.id,sm.target,{reopenReason:sm.reopenReason});
     } }
   applyDueChange(id,date){
     const t=this.tasks.find(x=>x.id===id); if(!t) return;
@@ -2551,7 +2549,7 @@ class Component extends DCLogic {
       V.smKind=sm.kind; V.smIsComplete=sm.kind==='complete'; V.smIsBlock=sm.kind==='block'; V.smIsReopen=sm.kind==='reopen'; V.smIsUnassign=sm.kind==='unassign'; V.smIsRevise=sm.kind==='revise'; V.smIsDue=sm.kind==='due';
       V.smTaskName=t.name;
       V.smTitle= sm.kind==='complete'?'Mark task as completed?' : sm.kind==='block'?'Mark task as blocked?' : sm.kind==='unassign'?'Move to unassigned?' : sm.kind==='revise'?'Set a revised date?' : sm.kind==='due'?'Change due date?' : 'Reopen this task?';
-      const smDisplayTarget=sm.kind==='reopen'&&sm.target==='unassigned'&&sm.reopenOwner!=='__no_owner__'?'not_started':sm.target;
+      const smDisplayTarget=sm.kind==='unassign'&&sm.reopenOwner!=='__no_owner__'?'not_started':sm.target;
       V.smTargetLabel= smDisplayTarget?S[smDisplayTarget].label:'';
       V.smSourceLabel=(S[t.status]&&S[t.status].label)||t.status||'';
       V.smDueLabel=this.fmt(t.due); V.smDate=sm.date; V.smReviseReason=sm.reviseReason;
@@ -2573,7 +2571,7 @@ class Component extends DCLogic {
       V.smBlockerReasonStyle='width:100%;min-height:60px;border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;outline:0;resize:vertical;margin-bottom:12px;'+smInvalid(V.smBlockerReasonMissing);
       V.smDateStyle='width:100%;height:38px;border-radius:10px;padding:0 11px;font-size:13px;font-family:inherit;outline:0;background:#fff;'+smInvalid(V.smDateMissing);
       V.smReviseReasonStyle='width:100%;min-height:60px;border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;outline:0;resize:vertical;'+smInvalid(V.smReviseReasonMissing);
-      V.smCta= sm.kind==='complete'?'Mark as Completed' : sm.kind==='block'?'Mark as Blocked' : sm.kind==='unassign'?'Move to Unassigned' : sm.kind==='revise'?'Save Revised Date' : sm.kind==='due'?'Save Due Date' : 'Reopen Task';
+      V.smCta= sm.kind==='complete'?'Mark as Completed' : sm.kind==='block'?'Mark as Blocked' : sm.kind==='unassign'?(sm.reopenOwner==='__no_owner__'?'Move to Unassigned':'Move to Pending') : sm.kind==='revise'?'Save Revised Date' : sm.kind==='due'?'Save Due Date' : 'Reopen Task';
       V.smCtaStyle= 'flex:1;height:40px;border:0;color:#fff;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;background:'
         + (sm.kind==='block' ? 'var(--red)' : sm.kind==='complete' ? 'var(--emerald)' : sm.kind==='revise' ? '#c98a12' : 'var(--violet)');
       V.smOwnerOptions=this.OWNERS;
