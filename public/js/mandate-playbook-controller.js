@@ -1,9 +1,9 @@
 class Component extends DCLogic {
   constructor(props){
     super(props);
-    const NOW = '2026-07-13';
-    this.NOW = NOW;
     this.realToday = ()=>{ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+    const NOW = this.realToday();
+    this.NOW = NOW;
     this.WS = ['Management','PR','Digital Marketing','Site Requirements','Marketing','Post Sales','Manpower','Training & Pitch','Timeline Scenarios'];
     this.STATUS = {
       unassigned:{label:'Unassigned', bg:'#ECECEF', fg:'#6b6b72', accent:'#a0a0a8'},
@@ -55,7 +55,7 @@ class Component extends DCLogic {
       modal:null, // {type:'delete'|'create', taskId|mandateId} 
       delRemark:'', delConfirm:false, delError:'',
       dragTaskId:null, dragOverStatus:null, boardFail:false, justMovedId:null, boardGroup:'mandate', collapsedLanes:{},
-      listCols:{}, listColsOpen:false, expandedSubs:{}, listExpanded:{}, ganttExpanded:{}, ganttZoom:'weeks', ganttHover:null, ganttOverride:{}, ganttRow:null, rowMenuId:null, mandateMenuId:null,
+      listCols:{}, listColsOpen:false, expandedSubs:{}, listExpanded:{}, ganttExpanded:{}, ganttZoom:'weeks', ganttHover:null, ganttOverride:{}, ganttRow:null, rowMenuId:null, listStatusMenuId:null, mandateMenuId:null,
       statusModal:null, // {kind:'complete'|'block'|'reopen', id, target, closingRemark, blockerReason, blockerOwner, reopenReason, error}
       celebFreeze:null, // holds header Done stat at its pre-completion value during the celebration cracker
       transfer:null, // {taskId, search, pickedId}
@@ -77,13 +77,13 @@ class Component extends DCLogic {
   userRoleLabel(userId){ if(this.mandates.some(m=>m.pnlOwnerId===userId)) return 'P&L Owner'; if(this.mandates.some(m=>(m.teamLeadIds||[]).includes(userId))) return 'Team Lead'; return 'Task Owner'; }
   userRoleRank(userId){ const label=this.userRoleLabel(userId); return label==='P&L Owner'?0:label==='Team Lead'?1:2; }
   initials(n){ if(!n) return '?'; const p=n.trim().split(/\s+/); return (p[0][0]+(p[1]?p[1][0]:'')).toUpperCase(); }
-  fmt(d){ if(!d) return ''; const [y,mo,da]=String(d).slice(0,10).split('-'); const M=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']; return y&&M[parseInt(mo,10)-1]?String(da).padStart(2,'0')+'-'+M[parseInt(mo,10)-1]+'-'+y:''; }
+  fmt(d){ if(!d) return ''; const [y,mo,da]=String(d).slice(0,10).split('-'); const M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return y&&M[parseInt(mo,10)-1]?String(da).padStart(2,'0')+'-'+M[parseInt(mo,10)-1]+'-'+y:''; }
   fmtFull(d){ return this.fmt(d); }
   _applyUiPolish(){
     try{
       if(!document.getElementById('mpb-ui-polish')){
         const style=document.createElement('style'); style.id='mpb-ui-polish';
-        style.textContent='.dd-field{position:relative;z-index:1!important}.dd-field:focus-within{z-index:10000!important}.dd-field:focus-within [role="listbox"],.dd-field:focus-within [role="menu"]{z-index:10001!important;background:#fff!important;box-shadow:0 12px 30px rgba(16,23,33,.16)!important}.mpb-date-input{color:transparent!important;caret-color:transparent!important;padding-right:46px!important}.mpb-date-overlay{position:absolute;display:flex;align-items:center;pointer-events:none;color:#101721;font-family:Graphik,Arial,sans-serif;line-height:1;white-space:nowrap;z-index:2}';
+        style.textContent='.dd-field{position:relative;z-index:1!important}.dd-field:focus-within{z-index:10000!important}.dd-field:focus-within [role="listbox"],.dd-field:focus-within [role="menu"]{z-index:10001!important;background:#fff!important;box-shadow:0 12px 30px rgba(16,23,33,.16)!important}.mpb-date-input{color:transparent!important;caret-color:transparent!important;padding-right:46px!important}.mpb-date-overlay{position:absolute;display:flex;align-items:center;pointer-events:none;color:rgba(16,23,33,.94);font:500 14px/18px Graphik,Inter,system-ui,sans-serif;white-space:nowrap;z-index:2}';
         document.head.appendChild(style);
       }
       document.querySelectorAll('input[type="date"]').forEach(input=>{
@@ -98,7 +98,7 @@ class Component extends DCLogic {
         if(getComputedStyle(parent).position==='static') parent.style.position='relative';
         let overlay=parent.querySelector(':scope > .mpb-date-overlay');
         if(!overlay){ overlay=document.createElement('span'); overlay.className='mpb-date-overlay'; parent.appendChild(overlay); }
-        const update=()=>{ const liveStyle=getComputedStyle(input); overlay.textContent=this.fmt(input.value); overlay.style.left=(input.offsetLeft+14)+'px'; overlay.style.top=input.offsetTop+'px'; overlay.style.height=input.offsetHeight+'px'; overlay.style.maxWidth=Math.max(0,input.offsetWidth-58)+'px'; overlay.style.fontSize=liveStyle.fontSize; overlay.style.fontWeight=liveStyle.fontWeight; };
+        const update=()=>{ overlay.textContent=this.fmt(input.value); overlay.style.left='16px'; overlay.style.top=input.offsetTop+'px'; overlay.style.height=input.offsetHeight+'px'; overlay.style.maxWidth=Math.max(0,input.parentElement.clientWidth-62)+'px'; };
         update();
         if(!input.dataset.mpbDateBound){ input.dataset.mpbDateBound='1'; input.addEventListener('input',()=>requestAnimationFrame(update)); input.addEventListener('change',()=>requestAnimationFrame(update)); }
       });
@@ -198,6 +198,7 @@ class Component extends DCLogic {
     if(!val){ return; } // incomplete date mid-typing — keep editor open, wait for more input
     if(t.start && val<t.start){ this.toast('Due date cannot be before the start date ('+this.fmt(t.start)+').','error'); return; }
     const changed = t.due!==val;
+    if(changed){ t.dueChanges=t.dueChanges||[]; t.dueChanges.push({from:t.due,to:val,by:this.roleName()||'Team Lead',when:this.fmt(this.realToday())+' · just now'}); }
     t.due=val;
     this.setState({dueEdit:null});
     if(changed) this.toast('Due date updated to '+this.fmt(val),'success');
@@ -206,8 +207,17 @@ class Component extends DCLogic {
   // ---------- drawer / form ----------
   openView(id){ this.openEdit(id); } // unified: always open the single Edit Details drawer
   openAdd(){ const st=this.state; let _sm=this.mandates.filter(m=>this.canManageMandate(m)); if(st.gfSel) _sm=_sm.filter(m=>st.gfSel[m.id]); const _defM=(st.mandateId&&this.canManageMandate(st.mandateId)?st.mandateId:null)||(_sm[0]&&_sm[0].id); if(!_defM){ this.toast('You can create tasks only for mandates where you are the P&L owner or TL.','error'); return; } this.setState({drawer:{mode:'add'}, drawerTab:'details', addStep:1, draft:{mandateId:_defM, ws:this.WS[0],name:'',subs:[],prio:'medium',desc:'',start:this.NOW,due:this.NOW,revised:'',status:'unassigned',primary:'',primaryOwnerId:'',external:false,remark:'',closeRemark:'',fail:false}}); }
-  openEdit(id){ const t=this.tasks.find(x=>x.id===id); this.setState({drawer:{mode:'edit',taskId:id}, drawerTab:'details', draft:{...t, subs:(t.subtasks||[]).map(s=>({name:s.name, owner:s.primary||''})), closeRemark:t.closeRemark||'', fail:false}}); }
-  addNext(){ const d=this.state.draft||{}; let err=''; if(!d.ws) err='Category is required.'; else if(!d.name||!d.name.trim()) err='Task is required.'; if(err){ this.setState({draft:{...d,error:err}}); return; } this.setState({addStep:2, draft:{...d,error:''}}); }
+  openEdit(id){ const t=this.tasks.find(x=>x.id===id); const subs=(t.subtasks||[]).map(s=>{ const ownerId=s.primaryOwnerId||s.taskOwnerId||s.ownerId||s.owner_id||''; const employee=ownerId&&this.EMPLOYEES.find(e=>e.id===ownerId); return {name:s.name||s.taskName||'',owner:s.primary||s.owner||s.taskOwner||s.task_owner||(employee&&employee.name)||''}; }); this.setState({drawer:{mode:'edit',taskId:id},drawerTab:'details',draft:{...t,subs,remark:'',blockerOwner:t.blockerOwner||'',blockerOwnerId:t.blockerOwnerId||'',closeRemark:t.closeRemark||'',fail:false}}); }
+  addNext(){
+    const d=this.state.draft||{}; let err='';
+    const incompleteSubtask=(d.subs||[]).some(subtask=>{ const hasName=!!String(subtask&&subtask.name||'').trim(), hasOwner=!!(subtask&&subtask.owner); return hasName!==hasOwner; });
+    if(!d.mandateId) err='Mandate is required.';
+    else if(!d.ws) err='Category is required.';
+    else if(!d.name||!d.name.trim()) err='Task is required.';
+    else if(incompleteSubtask) err='Complete both the sub-task name and owner, or remove that sub-task.';
+    if(err){ this.setState({draft:{...d,error:err,validationAttempted:true}}); return; }
+    this.setState({addStep:2, draft:{...d,error:'',validationAttempted:false}});
+  }
   addBack(){ this.setState({addStep:1, draft:{...(this.state.draft||{}),error:''}}); }
   closeDrawer(){
     if(this._drawerClosing) return;
@@ -220,9 +230,15 @@ class Component extends DCLogic {
   taskTimeline(t){ if(!t) return [];
     const ev=[]; const who=t.primary||'Team Lead';
     ev.push({type:'created', title:'Task created', by:(t.ws==='Management'?'Arindom D':'Team Lead'), when:this.fmt(t.start)+' · 09:30 am', note:'Added to the launch checklist under '+t.ws+'.', dot:'var(--violet)'});
-    ev.push({type:'due', title:'Due date set', by:'Team Lead', when:this.fmt(t.start)+' · 09:31 am', note:'Target: '+this.fmt(t.due), dot:'#2f6fdb'});
+    const originalDue=(Array.isArray(t.dueChanges)&&t.dueChanges.length&&t.dueChanges[0].from)||t.due;
+    ev.push({type:'due', title:'Due date set', by:'Team Lead', when:this.fmt(t.start)+' · 09:31 am', note:'Target: '+this.fmt(originalDue), dot:'#2f6fdb'});
+    if(Array.isArray(t.dueChanges)) t.dueChanges.forEach(change=>ev.push({type:'due-change',title:'Due date changed',by:change.by||'Team Lead',when:change.when||this.fmt(this.realToday()),note:this.fmt(change.from)+'  →  '+this.fmt(change.to),dot:'#2f6fdb'}));
     if(t.status==='in_progress'||t.status==='completed'||t.status==='blocked') ev.push({type:'status', title:'Status → In Progress', by:who, when:this.fmt(t.start)+' · 02:15 pm', note:'Work started.', dot:'#2f6fdb'});
-    if(t.revised) ev.push({type:'revised', title:'Revised timeline changed', by:'Team Lead', when:this.fmt(t.due)+' · 11:00 am', note:this.fmt(t.due)+'  →  '+this.fmt(t.revised), dot:'#c98a12'});
+    if(Array.isArray(t.revisions) && t.revisions.length){
+      t.revisions.forEach(rv=>ev.push({type:'revised', title:'Revised timeline changed', by:rv.by||'Task Owner', when:rv.when||this.fmt(t.due), note:this.fmt(rv.from||t.due)+'  →  '+this.fmt(rv.to), dot:'#c98a12'}));
+    } else if(t.revised){
+      ev.push({type:'revised', title:'Revised timeline changed', by:'Task Owner', when:this.fmt(t.due)+' · 11:00 am', note:this.fmt(t.due)+'  →  '+this.fmt(t.revised), dot:'#c98a12'});
+    }
     if(t.remark) ev.push({type:'note', title:'Note added by '+who, by:who, when:this.fmt(t.revised||t.due)+' · 04:20 pm', note:t.remark, dot:'var(--gray)'});
     if(t.status==='blocked') ev.push({type:'status', title:'Status → Blocked', by:who, when:this.fmt(t.revised||t.due)+' · 04:25 pm', note:t.remark||'Blocked pending dependency.', dot:'var(--red)'});
     if(t.status==='completed') ev.push({type:'done', title:'Marked complete', by:who, when:this.fmt(t.revised||t.due)+' · 05:55 pm', note:t.closeRemark||t.remark||'Closed and signed off.', dot:'var(--emerald)'});
@@ -246,15 +262,43 @@ class Component extends DCLogic {
     return rows;
   }
   editFromView(){ const id=this.state.drawer.taskId; this.openEdit(id); }
-  setD(k,v){ this.setState(s=>({draft:{...s.draft,[k]:v, error:''}})); }
+  setD(k,v){ this.setState(s=>{ const draft=s.draft||{}; if(k==='status'&&v==='unassigned'&&draft.primary) v='not_started'; return {draft:{...draft,[k]:v,error:''}}; }); }
+  setStartDate(v){ this.setState(s=>{ const draft=s.draft||{}, isCreating=!!(s.drawer&&s.drawer.mode==='add'), start=(isCreating&&v<this.NOW)?this.NOW:v, due=(!draft.due||draft.due<start)?start:draft.due; return {draft:{...draft,start,due,error:''}}; }); }
+  setDueDate(v){ this.setState(s=>{ const draft=s.draft||{}, minimum=draft.start&&draft.start>this.NOW?draft.start:this.NOW, due=v<minimum?minimum:v; return {draft:{...draft,due,error:''}}; }); }
+  categoryNames(){
+    const names=[...this.WS,...this.tasks.map(t=>t&&t.ws).filter(Boolean)];
+    return names.filter((name,index)=>names.findIndex(other=>other.trim().toLocaleLowerCase()===name.trim().toLocaleLowerCase())===index);
+  }
+  setCategoryValue(value){
+    if(value==='__new_category_active__') return;
+    if(value!=='__add_new_category__'){
+      this.setState(s=>({draft:{...s.draft,ws:value,newCategoryOpen:false,newCategoryName:'',newCategoryError:'',error:''}}));
+      return;
+    }
+    this.setState(s=>({draft:{...s.draft,newCategoryOpen:true,newCategoryName:'',newCategoryError:'',error:''}}));
+  }
+  setNewCategoryName(value){ this.setState(s=>({draft:{...s.draft,newCategoryName:value,newCategoryError:'',error:''}})); }
+  cancelNewCategory(){ this.setState(s=>({draft:{...s.draft,newCategoryOpen:false,newCategoryName:'',newCategoryError:'',error:''}})); }
+  confirmNewCategory(){
+    const entered=(this.state.draft&&this.state.draft.newCategoryName)||'';
+    const name=entered.trim().replace(/\s+/g,' ');
+    if(!name){ this.setState(s=>({draft:{...s.draft,newCategoryError:'Enter a category name.'}})); return; }
+    const existing=this.categoryNames().find(category=>category.toLocaleLowerCase()===name.toLocaleLowerCase());
+    if(existing){
+      this.setState(s=>({draft:{...s.draft,newCategoryError:'This category already exists.'}}));
+      return;
+    }
+    this.WS.push(name);
+    this.setState(s=>({draft:{...s.draft,ws:name,newCategoryOpen:false,newCategoryName:'',newCategoryError:'',error:''}}));
+  }
   setPrimaryAndDepartment(ownerName){
     const employee=this.EMPLOYEES.find(e=>e.name===ownerName);
     const department=employee ? (employee.department||employee.dept||'') : '';
-    this.setState(s=>({draft:{...s.draft,primary:ownerName,primaryOwnerId:employee?employee.id:'',dept:department,error:''}}));
+    this.setState(s=>{ const draft=s.draft||{}; return {draft:{...draft,primary:ownerName,primaryOwnerId:employee?employee.id:'',dept:department,status:ownerName?(draft.status==='unassigned'?'not_started':draft.status):'unassigned',error:''}}; });
   }
-  addSub(){ this.setState(s=>({draft:{...s.draft, subs:[...(s.draft.subs||[]),{name:'',owner:''}], error:''}})); }
-  setSub(i,field,v){ this.setState(s=>{ const subs=[...(s.draft.subs||[])]; subs[i]={...subs[i], [field]:v}; return {draft:{...s.draft, subs, error:''}}; }); }
-  removeSub(i){ this.setState(s=>{ const subs=(s.draft.subs||[]).filter((_,x)=>x!==i); return {draft:{...s.draft, subs, error:''}}; }); }
+  addSub(){ this.setState(s=>({draft:{...s.draft,subs:[...(s.draft.subs||[]),{name:'',owner:''}],error:'',validationAttempted:false}})); }
+  setSub(i,field,v){ this.setState(s=>{ const subs=[...(s.draft.subs||[])]; subs[i]={...subs[i],[field]:v}; return {draft:{...s.draft,subs,error:''}}; }); }
+  removeSub(i){ this.setState(s=>{ const subs=(s.draft.subs||[]).filter((_,x)=>x!==i); return {draft:{...s.draft,subs,error:'',validationAttempted:false}}; }); }
   toggleSupport(name){ this.setState(s=>{ const cur=s.draft.supporting||[]; const has=cur.includes(name); return {draft:{...s.draft, supporting: has?cur.filter(x=>x!==name):[...cur,name], error:''}}; }); }
   reopen(id){ const t=this.tasks.find(x=>x.id===id); t.status='in_progress'; this.toast('Task reopened','success'); this.forceUpdate(); }
 
@@ -284,21 +328,30 @@ class Component extends DCLogic {
     const stask = (this.state.drawer && this.state.drawer.taskId) ? this.tasks.find(x=>x.id===this.state.drawer.taskId) : null;
     const editable=this.canManageMandate(d.mandateId||(stask&&stask.mandateId)||this.state.mandateId);
     const statusOnly=!!(stask&&this.isMine(stask)&&!editable);
+    const revisedChanged=!!(stask&&((d.revised||'')!==(stask.revised||'')));
+    const incompleteSubtask=(d.subs||[]).some(subtask=>{ const hasName=!!String(subtask&&subtask.name||'').trim(), hasOwner=!!(subtask&&subtask.owner); return hasName!==hasOwner; });
     let err='';
     if(editable){
-      if(!d.ws) err='Category is required.';
+      if(this.state.drawer.mode==='add' && !d.mandateId) err='Mandate is required.';
+      else if(!d.ws) err='Category is required.';
       else if(!d.name || !d.name.trim()) err='Task is required.';
+      else if(incompleteSubtask) err='Complete both the sub-task name and owner, or remove that sub-task.';
+      else if(this.state.drawer.mode==='add' && !d.start) err='Start date is required.';
       else if(!d.due) err='Due date is required.';
       else if(d.due < this.NOW) err='Due date must be today or later.';
-      else if(d.start && d.start < this.NOW) err='Start date cannot be in the past.';
-      else if(d.start && d.due && d.due <= d.start) err='Due date must be after the start date.';
+      else if(this.state.drawer.mode==='add' && d.start && d.start < this.NOW) err='Start date cannot be in the past.';
+      else if(d.start && d.due && d.due < d.start) err='Due date cannot be before the start date.';
+      else if(!d.status) err='Status is required.';
+      else if(!d.prio) err='Priority is required.';
       else if(!d.primary) err='Task Owner is required.';
     }
     if(!err && d.revised && d.revised < this.NOW) err='Revised date must be today or later.';
+    if(!err && statusOnly && revisedChanged && !(d.remark||'').trim()) err='Remark is required when setting a revised date.';
+    if(!err && d.status==='blocked' && !(d.remark||'').trim()) err='Remark is required when status is Blocked.';
     if(!err && !editable && !statusOnly) err='You can view this task, but you cannot update it.';
     if(!err && d.fail) err='Task could not be saved. The server returned an error (500). Please retry.';
-    if(err){ this.setState(s=>({draft:{...s.draft,error:err}})); this.toast(err,'error'); return; }
-    const subtasks=(d.subs||[]).filter(s=>s&&s.name&&s.name.trim()).map((s,i)=>({id:'ns'+i,name:s.name.trim(),status:'not_started',primary:s.owner||''}));
+    if(err){ this.setState(s=>({draft:{...s.draft,error:err,validationAttempted:true}})); this.toast(err,'error'); return; }
+    const subtasks=(d.subs||[]).filter(s=>s&&s.name&&s.name.trim()).map((s,i)=>{ const owner=this.EMPLOYEES.find(e=>e.name===s.owner); return {id:'ns'+i,name:s.name.trim(),status:'not_started',primary:s.owner||'',owner:s.owner||'',taskOwner:s.owner||'',primaryOwnerId:owner?owner.id:''}; });
     let celebrateId=null; let addedId=null;
     if(this.state.drawer.mode==='add'){
       const owner=this.EMPLOYEES.find(e=>e.name===d.primary);
@@ -311,8 +364,23 @@ class Component extends DCLogic {
     } else {
       const t=this.tasks.find(x=>x.id===this.state.drawer.taskId);
       const wasDone=t.status==='completed'; const wasBlk=t.status==='blocked';
-      if(editable){ const owner=this.EMPLOYEES.find(e=>e.name===d.primary); Object.assign(t,{ws:d.ws,name:d.name,prio:d.prio,due:d.due,revised:d.revised,status:d.status,primaryOwnerId:owner?owner.id:'',primary:d.primary,desc:d.desc,remark:d.remark,closeRemark:d.closeRemark,dept:d.dept,external:!!d.external}); }
-      if(statusOnly) t.status=d.status;
+      if(editable){ const owner=this.EMPLOYEES.find(e=>e.name===d.primary); if(t.due!==d.due){ t.dueChanges=t.dueChanges||[]; t.dueChanges.push({from:t.due,to:d.due,by:this.roleName()||'Team Lead',when:this.fmt(this.realToday())+' · just now'}); } Object.assign(t,{ws:d.ws,name:d.name,prio:d.prio,due:d.due,revised:d.revised,status:d.status,primaryOwnerId:owner?owner.id:'',primary:d.primary,desc:d.desc,closeRemark:d.closeRemark,dept:d.dept,external:!!d.external}); if((d.remark||'').trim()) t.remark=d.remark.trim(); if(d.status==='blocked'){ t.blockerReason=d.remark.trim(); t.blockerOwner=d.blockerOwner||''; t.blockerOwnerId=d.blockerOwnerId||''; } }
+      if(statusOnly){
+        t.status=d.status;
+        if((d.remark||'').trim()) t.remark=d.remark.trim();
+        if(d.status==='blocked'){
+          t.blockerReason=d.remark.trim();
+          t.blockerOwner=d.blockerOwner||'';
+          t.blockerOwnerId=d.blockerOwnerId||'';
+          t.remark=d.remark.trim();
+        }
+        if(revisedChanged){
+          t.revisions=t.revisions||[];
+          t.revisions.push({from:t.revised||t.due,to:d.revised,by:this.roleName(),when:this.fmt(this.realToday()),reason:(d.remark||'').trim()});
+          t.revised=d.revised;
+          t.remark=d.remark;
+        }
+      }
       if(!wasDone && t.status==='completed') celebrateId=t.id;
       if(!wasBlk && t.status==='blocked'){ this._blockedSound(); this._blockedPulse(t.id); }
       if(editable&&d.subs) t.subtasks=subtasks;
@@ -343,6 +411,9 @@ class Component extends DCLogic {
     if(t.status==='completed'){ this.openSM('reopen',id,val); return; } // confirm reopen
     this.applyStatus(id,val,{});
   }
+  toggleListStatusMenu(id,e){ try{e.stopPropagation();}catch(_){} this.setState(s=>({listStatusMenuId:s.listStatusMenuId===id?null:id,rowMenuId:null})); }
+  closeListStatusMenu(e){ try{e.stopPropagation();}catch(_){} this.setState({listStatusMenuId:null}); }
+  pickListStatus(id,status,e){ try{e.stopPropagation();}catch(_){} this.setState({listStatusMenuId:null},()=>this.updateStatus(id,status)); }
 
   // ---------- delete ----------
   openDelete(id){ const t=this.tasks.find(x=>x.id===id); if(!t||!this.canManageMandate(t.mandateId)){ this.toast('Only this mandate\'s P&L owner or TL can delete tasks.','error'); return; } this.setState({modal:{type:'delete',taskId:id}, delRemark:'', delConfirm:false, delError:'', drawer:null}); }
@@ -578,6 +649,7 @@ class Component extends DCLogic {
         rows.push({group:false, groupRow:true, id:t.id, name:t.name, stage:t.stage, statusLabel:stLabel, ext:t.external,
           primaryInitials:this.initials(t.primary), ownerColor:this.ownerColors[t.primary]||'var(--gray-dark)',
           canTransfer:rCanT, onTransfer:rCanT?((e)=>this.openTransfer(t.id,e)):(()=>{}),
+          canDelete:rCanT, onDelete:(e)=>{ try{e.stopPropagation();}catch(_){} this.openDelete(t.id); },
           ownerAvatarStyle:'width:24px;height:24px;border-radius:50%;background:'+(this.ownerColors[t.primary]||'var(--gray-dark)')+';color:#fff;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none'+(rCanT?';cursor:pointer':''),
           ownerHoverStyle:rCanT?'filter:brightness(1.08)':'',
           ownerTitle:rCanT?'Click to transfer owner / Task Owner':t.primary,
@@ -739,15 +811,17 @@ class Component extends DCLogic {
     else { this.applyStatus(sm.id,sm.target,{reopenReason:sm.reopenReason}); } }
   applyDueChange(id,date){
     const t=this.tasks.find(x=>x.id===id); if(!t) return;
-    const changed = t.due!==date; t.due=date;
+    const changed = t.due!==date;
+    if(changed){ t.dueChanges=t.dueChanges||[]; t.dueChanges.push({from:t.due,to:date,by:this.roleName()||'Team Lead',when:this.fmt(this.realToday())+' · just now'}); }
+    t.due=date;
     this.setState({statusModal:null});
     if(changed) this.toast('Due date updated to '+this.fmt(date),'success');
   }
   applyRevise(id,date,reason){
     const t=this.tasks.find(x=>x.id===id); if(!t) return;
-    const oldRevised=t.revised; t.revised=date;
     t.revisions=t.revisions||[];
-    t.revisions.push({from: oldRevised||t.due, to:date, by:this.roleName()||'Task owner', when:this.fmt(this.NOW)+' · just now', reason:reason.trim()});
+    t.revisions.push({from:t.revised||t.due, to:date, by:this.roleName()||'Task owner', when:this.fmt(this.NOW)+' · just now', reason:reason.trim()});
+    t.revised=date;
     this.setState({statusModal:null});
     this.toast('Revised date updated to '+this.fmt(date),'success');
   }
@@ -938,6 +1012,7 @@ class Component extends DCLogic {
           this.OWNERS=this.eligibleOwners().map(e=>e.name);
           this.ownerColors=data.employees.reduce((colors,e)=>{ colors[e.name]=e.color||'var(--gray-dark)'; return colors; },{});
           this.tasks=data.tasks;
+          this.tasks.forEach(task=>{ const name=(task&&task.ws||'').trim(); if(name&&!this.WS.some(category=>category.toLocaleLowerCase()===name.toLocaleLowerCase())) this.WS.push(name); });
           if(!this.state.userId && this.EMPLOYEES.length){
             let saved=''; try{ saved=localStorage.getItem('mandate-playbook:selected-user')||''; }catch(_){}
             const savedUser=this.EMPLOYEES.find(e=>e.id===saved);
@@ -1102,6 +1177,7 @@ class Component extends DCLogic {
       V.gfParams=['BU + P&L','Mandate','Project','Developer','City'];
       V.gfParam=st.gfParam; V.gfTeams=!!st.gfTeams;
       V.gfOpen=!!st.gfOpen;
+      V.topNavStyle='position:sticky;top:0;z-index:'+(st.gfOpen?10050:40)+';flex:none;display:flex;align-items:center;background:#4040B3';
       V.onProjectClick=()=>this.setState(s=>s.gfOpen?({gfOpen:false,gfDraft:undefined}):({gfOpen:true,gfDraft:s.gfSel?{...s.gfSel}:null}));
       V.onCloseGf=()=>this.setState({gfOpen:false,gfDraft:undefined});
       V.onGfSearch=(v)=>{ const val=(v&&v.target)?v.target.value:v; this.setState({gfSearch:val||''}); };
@@ -1146,7 +1222,18 @@ class Component extends DCLogic {
         cols.push({ key:'teams', title:'Teams', width:240, rows:teams.map(n=>({id:'t:'+n,label:n,checked:false})), emptyText:'No supporting owners', onToggle:()=>{} }); }
       V.gfColumns=cols;
       V.onGfClear=()=>this.setState({gfDraft:null, gfGroupSel:null, gfDrillMandate:null});
-      V.onGfApply=()=>this.setState(s=>({gfSel:s.gfDraft, gfOpen:false, gfDraft:undefined}));
+      V.onGfApply=()=>{
+        const nextSelection=st.gfDraft ? {...st.gfDraft} : null;
+        if(this.gfApplyTimer) clearTimeout(this.gfApplyTimer);
+        // Let the selector disappear before changing the page beneath it. This
+        // prevents newly selected mandate/category content showing through the
+        // design-system dropdown during its closing frame.
+        this.setState({gfOpen:false,gfDraft:undefined});
+        this.gfApplyTimer=setTimeout(()=>{
+          this.gfApplyTimer=null;
+          this.setState({gfSel:nextSelection});
+        },220);
+      };
     }
     V.navDrawerOpen=!!this.state.navDrawerOpen;
     {
@@ -1790,15 +1877,21 @@ class Component extends DCLogic {
           deltaStyle:'font-size:10.5px;font-weight:600;margin-left:6px;'+(delta>0?'color:#9a6a12':'color:#1f8a5b'),
           canEditInline:canInline, statusReadonly:!canInline, locked,
           statusKey:t.status, statusLabel:S[t.status].label, statusStyle:statusBadge(t.status),
-          statusStyleFixed:statusBadge(t.status)+';width:118px;box-sizing:border-box;text-align:center',
-          statusOptions:Object.keys(S).map(k=>({value:k,label:S[k].label})),
+          statusStyleFixed:statusBadge(t.status)+';width:118px;height:28px;box-sizing:border-box;text-align:center;font-size:12.5px;display:flex;align-items:center;justify-content:center',
+          statusOptions:Object.keys(S).map(k=>({value:k,label:S[k].label,active:k===t.status,rowStyle:'width:100%;height:32px;padding:0 10px;border:0;border-radius:5px;background:'+(k===t.status?S[k].bg:'#fff')+';color:'+(k===t.status?S[k].fg:'rgba(16,23,33,.94)')+';font:500 12.5px/16px Graphik,Inter,system-ui,sans-serif;text-align:left;cursor:pointer',onPick:(e)=>this.pickListStatus(t.id,k,e)})),
           statusSelectStyle:`width:118px;box-sizing:border-box;text-align:center;font-size:11px;font-weight:600;border-radius:20px;padding:4px 8px;cursor:pointer;font-family:inherit;border:1px solid ${S[t.status].fg}40;background:${S[t.status].bg};color:${S[t.status].fg};outline:0`,
+          statusFieldStyle:`position:relative;width:118px;--list-status-bg:${S[t.status].bg};--list-status-fg:${S[t.status].fg};--list-status-border:${S[t.status].fg}40`,
+          statusMenuOpen:st.listStatusMenuId===t.id,
+          statusMenuStyle:'position:absolute;top:32px;left:0;z-index:10005;width:148px;padding:4px;background:#fff;border:1px solid #E0E0E0;border-radius:8px;box-shadow:0 10px 26px rgba(16,23,33,.18)',
+          onToggleStatusMenu:(e)=>this.toggleListStatusMenu(t.id,e),
+          onCloseStatusMenu:(e)=>this.closeListStatusMenu(e),
           onStatusChange:(e)=>this.updateStatus(t.id,e.target.value),
+          onStatusChangeV:(v)=>this.updateStatus(t.id,v),
           prioLabel:P[t.prio].label, prioStyle:prioBadge(t.prio), prioFlames:flames(t.prio),
           remarkCell: r==='dev' ? (t.remark?'—':'') : (t.remark?('“'+t.remark.slice(0,44)+(t.remark.length>44?'…':'')+'”'):'—'),
           showEdit:this.canEditTask(t), showDelete:this.canManageMandate(t.mandateId),
           menuOpen: st.rowMenuId===t.id,
-          rowZ: st.rowMenuId===t.id ? 5 : 'auto',
+          rowZ: (st.rowMenuId===t.id||st.listStatusMenuId===t.id) ? 10004 : 'auto',
           rowBg: st.rowHoverId===t.id ? '#F6F6FF' : '#fff',
           onRowEnter:()=>this.setState({rowHoverId:t.id}),
           onRowLeave:()=>this.setState(s=>s.rowHoverId===t.id?{rowHoverId:null}:null),
@@ -1981,7 +2074,9 @@ class Component extends DCLogic {
               hasDueRange: !!t.revised && r!=='dev', noDueRange: !(!!t.revised && r!=='dev'),
               dueOldLabel: this.fmt(t.due), dueNewLabel: this.fmt(t.revised),
               dueRangeLabel: this.fmt(eff),
-              dueStyle:'font-size:10.5px;font-weight:600;color:rgba(16,23,33,.94);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0',
+              dueStyle:'font-size:10.5px;font-weight:600;color:rgba(16,23,33,.94);white-space:nowrap;min-width:0',
+              cardFooterStyle:'display:flex;align-items:center;gap:6px;margin-top:auto;padding-top:9px;'+(t.revised?'flex-wrap:wrap':'flex-wrap:nowrap'),
+              cardOwnerStyle:'margin-left:auto;display:flex;align-items:center;gap:5px;'+(t.revised?'flex:0 0 100%;justify-content:flex-end':'flex:0 0 auto'),
               prioLabel:P[t.prio].label, prioStyle:prioBadge(t.prio), prioFlames:flames(t.prio),
               primaryInitials:this.initials(t.primary), primaryName:t.primary, primaryFirstName:(t.primary||'').split(' ')[0], ownerColor:this.ownerColors[t.primary]||'var(--gray-dark)',
               canTransfer:this.canManageMandate(t.mandateId), onTransfer:this.canManageMandate(t.mandateId)?((e)=>this.openTransfer(t.id,e)):(()=>{}),
@@ -2072,6 +2167,8 @@ class Component extends DCLogic {
       V.onTabDetails=()=>this.setDrawerTab('details'); V.onTabDates=()=>this.setDrawerTab('dates'); V.onTabTimeline=()=>this.setDrawerTab('timeline');
       // dates + timeline data (from the task, view or edit)
       const dt=this.tasks.find(x=>x.id===dw.taskId)||{};
+      V.drawerCanDelete = dw.mode!=='add' && !!dt.id && this.canManageMandate(dt.mandateId);
+      V.onDeleteFromDrawer = ()=>this.openDelete(dt.id);
       V.dtStart=this.fmt(dt.start)||'—';
       { const dtOd=this.isOverdue(dt); const dtDelta=this.revisedDeltaDays(dt);
         V.dtShowDueField = (r!=='dev');
@@ -2156,18 +2253,26 @@ class Component extends DCLogic {
           V.addSecondaryLabel=_astep===2?'Cancel':'';
           V.addPrimaryLabel=_astep===1?'Next':'Save Task';
           V.addPrimaryAction=_astep===1?(()=>this.addNext()):(()=>this.saveDraft());
-          V.setWv=v=>this.setD('ws',v); V.setWsSelect=e=>this.setD('ws',e.target.value); V.setPrimarySelect=e=>this.setPrimaryAndDepartment(e.target.value); V.setStatusSelect=e=>this.setD('status',e.target.value); V.setPrioSelect=e=>this.setD('prio',e.target.value); V.setPriov=v=>this.setD('prio',v); V.setPrimaryv=v=>this.setPrimaryAndDepartment(v); V.setStatusv=v=>this.setD('status',v);
-          { const _sd=d.start||this.NOW; V.dDueMin=_sd; }
+          V.setWv=v=>this.setCategoryValue(v); V.setWsSelect=e=>this.setCategoryValue(e.target.value); V.setPrimarySelect=e=>this.setPrimaryAndDepartment(e.target.value); V.setStatusSelect=e=>this.setD('status',e.target.value); V.setPrioSelect=e=>this.setD('prio',e.target.value); V.setPriov=v=>this.setD('prio',v); V.setPrimaryv=v=>this.setPrimaryAndDepartment(v); V.setStatusv=v=>this.setD('status',v);
+          { const _sd=d.start||this.NOW; V.dDueMin=_sd>this.NOW?_sd:this.NOW; }
           V.setMandateSelect=e=>this.setD('mandateId',e.target.value);
-          V.setMandateV=v=>this.setD('mandateId',v); V.setWsV=v=>this.setD('ws',v); V.setPrimaryV=v=>this.setPrimaryAndDepartment(v); V.setDeptV=v=>this.setD('dept',v); V.setStatusV=v=>this.setD('status',v); V.setPrioV=v=>this.setD('prio',v);
+          V.setMandateV=v=>{
+            if(this.mandateSelectTimer) clearTimeout(this.mandateSelectTimer);
+            this.setState(s=>({draft:{...s.draft,mandateId:v},mandateDropdownClosing:true}));
+            this.mandateSelectTimer=setTimeout(()=>{
+              this.mandateSelectTimer=null;
+              this.setState({mandateDropdownClosing:false});
+            },220);
+          }; V.setWsV=v=>this.setCategoryValue(v); V.setPrimaryV=v=>this.setPrimaryAndDepartment(v); V.setDeptV=v=>this.setD('dept',v); V.setStatusV=v=>this.setD('status',v); V.setPrioV=v=>this.setD('prio',v);
           V.setDeptSelect=e=>this.setD('dept',e.target.value);
           V.dDept=d.dept||'';
           V.deptDDOptions=[{value:'',label:'Select department'}].concat(['Technology','Marketing','Strategic Development Initiative','CEO Office','Operations','Sales','Chairman Office','Legal','Admin','CTO Office','Call Center','Research','Corporate Sales','Vice Chairman Office','Finance','Transaction Services','HR','Transport'].map(x=>({value:x,label:x})));
           V.dMandate=(d.mandateId)||st.mandateId||'';
+          V.mandateDropdownClosing=!!st.mandateDropdownClosing;
           { let selM=this.mandates.filter(m=>this.canManageMandate(m)); if(st.gfSel) selM=selM.filter(m=>st.gfSel[m.id]);
             if(V.dMandate && !selM.some(m=>m.id===V.dMandate)){ const cur=this.mandate(V.dMandate); if(cur) selM=[cur].concat(selM); }
             V.addMandateOptions=selM.map(m=>({value:m.id,label:m.name})); }
-          V.wsDDOptions=this.WS.map(w=>({value:w,label:w}));
+          V.wsDDOptions=this.categoryNames().map(w=>({value:w,label:w})).concat([{value:'__add_new_category__',label:'+ Add New'}]);
           V.prioDDOptions=[{value:'high',label:'High'},{value:'medium',label:'Medium'},{value:'low',label:'Low'}];
           V.spocDDOptions=[{value:'',label:'Select employee…'}].concat(this.OWNERS.map(o=>({value:o,label:o})));
           V.statusDDOptions=[{value:'unassigned',label:'Unassigned'},{value:'not_started',label:'Pending'},{value:'in_progress',label:'In Progress'},{value:'blocked',label:'Blocked'},{value:'completed',label:'Done'}];
@@ -2176,30 +2281,35 @@ class Component extends DCLogic {
         }
         V.dInputDisabledStyle = 'width:100%;height:38px;border:1px solid #E0E0E0;border-radius:10px;padding:0 11px;font-size:13px;font-family:inherit;background:#F3F3F3;color:#9FA6B0;outline:0';
         // read-only display for fields this role cannot edit (shown as label + value like the View drawer)
-        V.roLabelStyle='font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:600';
-        V.roValStyle='font-size:14px;color:rgba(16,23,33,.94);margin-top:3px;line-height:1.4';
+        V.roLabelStyle='font-size:11px;line-height:14px;text-transform:uppercase;letter-spacing:.45px;color:var(--gray);font-weight:600;white-space:nowrap';
+        V.roValStyle='font-size:14px;color:rgba(16,23,33,.94);margin-top:7px;line-height:20px';
         const origTask = dw.taskId ? this.tasks.find(x=>x.id===dw.taskId) : null;
         const drawerMandateId=d.mandateId||(origTask&&origTask.mandateId)||st.mandateId;
         const coreEnabled=this.canManageMandate(drawerMandateId);
         const statusEnabled=!!(origTask&&(this.canManageMandate(origTask.mandateId)||this.isMine(origTask)));
+        const statusOnly=!!(origTask&&this.isMine(origTask)&&!coreEnabled);
         V.dCoreReadonly=!coreEnabled; V.dCoreEditable=coreEnabled;
-        V.formGridStyle = coreEnabled ? 'display:flex;flex-direction:column;gap:15px' : 'display:grid;grid-template-columns:1fr 1fr;gap:15px 18px;align-items:start';
+        V.drawerShowExternalTag=dw.mode==='edit'&&!!d.external;
+        V.dShowExternalInput=dw.mode==='add';
+        V.formGridStyle = coreEnabled ? 'display:flex;flex-direction:column;gap:15px' : 'display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:32px;row-gap:18px;align-items:start;padding:0 8px 12px';
+        V.ownerDeptRowStyle='display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px;grid-column:1/-1;align-items:start';
         V.roCategory=d.ws||'—'; V.roName=d.name||'—'; V.roDescVal=(d.desc&&d.desc.trim())?d.desc:'No description added.'; V.roDeptVal=d.dept||'—';
         V.roPrioVal=(this.PRIO[d.prio]||{}).label||d.prio; V.roPrioFlames=flames(d.prio); V.roDueVal=this.fmt(d.due)||'—';
         V.roPrimaryVal=d.primary||'Unassigned'; V.roPrimaryInitials=this.initials(d.primary||''); V.roPrimaryColor=this.ownerColors[d.primary]||'var(--gray-dark)';
         V.roHasSubs=(d.subs||[]).filter(s=>s&&s.name&&s.name.trim()).length>0; V.roSubs=(d.subs||[]).filter(s=>s&&s.name&&s.name.trim()).map(s=>({name:s.name, owner:s.owner||'Unassigned'}));
-        V.dRevisedEditable=false;
-        V.dRevisedEditRow = false;
-        V.showClosingField = dw.mode==='edit' && d.status==='completed' && !(origTask && origTask.status==='completed');
-        V.dRevisedChanged = false;
+        const revisedEnabled=!!(origTask&&this.isMine(origTask));
+        V.dRevisedEditable=revisedEnabled;
+        V.dRevisedEditRow=revisedEnabled;
+        V.showClosingField = coreEnabled && dw.mode==='edit' && d.status==='completed' && !(origTask && origTask.status==='completed');
+        V.dRevisedChanged = revisedEnabled && ((d.revised||'')!==(origTask.revised||''));
+        V.showRevisedReason = V.dRevisedChanged && coreEnabled;
         V.dRevisedReason = d.revisedReason||'';
         V.setRevisedReason = e=>this.setD('revisedReason', e.target.value);
         V.dReasonStyle = 'width:100%;min-height:60px;border:1px solid #E0D3AE;border-radius:10px;padding:9px 11px;font-size:13px;font-family:inherit;outline:0;resize:vertical;background:#fff';
         // role-based field permissions
-        const remarkEnabled = coreEnabled;
-        const revisedEnabled = coreEnabled;
+        const remarkEnabled = coreEnabled || statusEnabled;
         V.dCoreDisabled=!coreEnabled;
-        V.dCoreHelp = statusEnabled?'As the task owner, you can update status only.':'You can view this task, but only its mandate P&L owner or TL can edit details.';
+        V.dCoreHelp = statusEnabled?'As the task owner, you can update status and provide a revised date.':'You can view this task, but only its mandate P&L owner or TL can edit details.';
         V.dStatusDisabled=!statusEnabled; V.dRemarkDisabled=!remarkEnabled; V.dRevisedDisabled=!revisedEnabled;
         const inp='width:100%;height:46px;border:1px solid #E0E0E0;border-radius:4px;padding:0 14px;font-size:14px;font-family:inherit;outline:0;background:#fff;color:#101721';
         const inpDis='width:100%;height:46px;border:1px solid #EEE;border-radius:4px;padding:0 14px;font-size:14px;font-family:inherit;outline:0;background:#F7F7F7;color:var(--gray)';
@@ -2213,44 +2323,70 @@ class Component extends DCLogic {
         V.dRevisedStyle= revisedEnabled?inp:inpDis;
         V.dRemarkStyle= remarkEnabled?'width:100%;min-height:64px;border:1px solid #E0E0E0;border-radius:4px;padding:11px 14px;font-size:14px;font-family:inherit;outline:0;resize:vertical':'width:100%;min-height:64px;border:1px solid #EEE;border-radius:4px;padding:11px 14px;font-size:14px;font-family:inherit;outline:0;resize:vertical;background:#F7F7F7;color:var(--gray)';
         V.dTextareaStyle= coreEnabled?'width:100%;min-height:60px;border:1px solid #E0E0E0;border-radius:4px;padding:11px 14px;font-size:14px;font-family:inherit;outline:0;resize:vertical':'width:100%;min-height:60px;border:1px solid #EEE;border-radius:4px;padding:11px 14px;font-size:14px;font-family:inherit;outline:0;resize:vertical;background:#F7F7F7;color:var(--gray)';
-        V.dWs=d.ws; V.dName=d.name; V.dPrio=d.prio; V.dDesc=d.desc; V.dStart=d.start||this.NOW; V.dDue=d.due; V.dRevised=d.revised; V.dStatus=d.status; V.dPrimary=d.primary; V.dRemark=d.remark; V.dClosing=d.closeRemark||''; V.dFail=!!d.fail;
+        V.dWs=d.ws; V.dName=d.name; V.dPrio=d.prio; V.dDesc=d.desc; V.dStart=d.start||this.NOW; V.startDateMin=dw.mode==='add'?this.NOW:''; V.dDue=d.due; V.dRevised=d.revised; V.dStatus=d.status; V.dPrimary=d.primary; V.dRemark=d.remark; V.dClosing=d.closeRemark||''; V.dFail=!!d.fail;
+        const validateRequired=!!d.validationAttempted;
+        V.mandateMissing=dw.mode==='add'&&validateRequired&&!String(d.mandateId||'').trim();
+        V.categoryMissing=validateRequired&&coreEnabled&&!String(d.ws||'').trim();
+        V.taskMissing=validateRequired&&coreEnabled&&!String(d.name||'').trim();
+        V.startMissing=dw.mode==='add'&&validateRequired&&!String(d.start||'').trim();
+        V.dueMissing=validateRequired&&coreEnabled&&!String(d.due||'').trim();
+        V.statusMissing=validateRequired&&(dw.mode==='add'||statusEnabled)&&!String(d.status||'').trim();
+        V.priorityMissing=validateRequired&&coreEnabled&&!String(d.prio||'').trim();
+        V.ownerMissing=validateRequired&&coreEnabled&&!String(d.primary||'').trim();
+        V.remarkMissing=validateRequired&&((statusOnly&&V.dRevisedChanged)||d.status==='blocked')&&!String(d.remark||'').trim();
+        V.taskInputStyle=V.taskMissing?V.dInputStyle+';border-color:var(--red);box-shadow:0 0 0 1px var(--red)':V.dInputStyle;
         V.dCompany = d.external?'external':'internal'; V.dExternal=!!d.external; V.setExternal=e=>this.setD('external',!!e.target.checked); V.setCompanyV=v=>this.setD('external', v==='external');
         V.typeNode=React.createElement('label',{style:{height:46,display:'flex',alignItems:'center',gap:9,fontSize:14,color:'#101721',cursor:'pointer'}},
           React.createElement('input',{type:'checkbox',checked:V.dExternal,onChange:V.setExternal,style:{width:17,height:17,accentColor:'var(--violet)',cursor:'pointer'}}),
-          'External');
+          'Managed by External Vendor');
         V.companyDDOptions=[{value:'internal',label:'Internal'},{value:'external',label:'External'}];
-        V.roCompanyVal = d.external?'External':'—';
+        V.roCompanyVal = d.external?'Yes':'No';
         V.dCanNudge=coreEnabled && !!d.primary; V.onDrawerNudge=()=>this.sendDrawerNudge(dw.taskId, d.remark);
+        V.showBlockerOwner=d.status==='blocked';
+        V.dBlockerOwner=d.blockerOwner||'';
+        V.blockerOwnerOptions=this.EMPLOYEES.map(e=>({value:e.id,label:e.name}));
+        V.onBlockerOwnerChange=e=>{ const id=e.target.value, employee=this.EMPLOYEES.find(item=>item.id===id); this.setState(s=>({draft:{...s.draft,blockerOwnerId:id,blockerOwner:employee?employee.name:'',error:''}})); };
         V.dDept=d.dept||''; V.setDeptSelect=e=>this.setD('dept',e.target.value);
-        V.setWv=v=>this.setD('ws',v); V.setPrimaryV=v=>this.setPrimaryAndDepartment(v); V.setDeptV=v=>this.setD('dept',v); V.setStatusV=v=>this.setD('status',v); V.setPrioV=v=>this.setD('prio',v);
-        V.wsDDOptions=this.WS.map(w=>({value:w,label:w}));
+        V.setWv=v=>dw.mode==='add'?this.setCategoryValue(v):this.setD('ws',v); V.setPrimaryV=v=>this.setPrimaryAndDepartment(v); V.setDeptV=v=>this.setD('dept',v); V.setStatusV=v=>this.setD('status',v); V.setPrioV=v=>this.setD('prio',v);
+        V.newCategoryOpen=dw.mode==='add'&&!!d.newCategoryOpen;
+        if(V.newCategoryOpen) V.dWs='__new_category_active__';
+        V.wsDDOptions=(V.newCategoryOpen?[{value:'__new_category_active__',label:'New Category'}]:[]).concat(this.categoryNames().map(w=>({value:w,label:w}))).concat(dw.mode==='add'?[{value:'__add_new_category__',label:'+ Add new Category'}]:[]);
+        V.newCategoryName=d.newCategoryName||'';
+        V.newCategoryError=d.newCategoryError||'';
+        V.hasNewCategoryError=!!V.newCategoryError;
+        V.onNewCategoryName=e=>this.setNewCategoryName(e.target.value);
+        V.onConfirmNewCategory=()=>this.confirmNewCategory();
+        V.onCancelNewCategory=()=>this.cancelNewCategory();
+        V.newCategoryInputStyle='width:100%;height:46px;box-sizing:border-box;border:1px solid '+(V.hasNewCategoryError?'var(--red)':'#E0E0E0')+';border-radius:4px;padding:0 16px;font:500 14px/18px Graphik,Inter,system-ui,sans-serif;outline:0;color:rgba(16,23,33,.94);background:#fff';
         V.prioDDOptions=[{value:'high',label:'High'},{value:'medium',label:'Medium'},{value:'low',label:'Low'}];
         V.spocDDOptions=[{value:'',label:'Select employee…'}].concat(this.OWNERS.map(o=>({value:o,label:o})));
-        V.statusDDOptions=[{value:'unassigned',label:'Unassigned'},{value:'not_started',label:'Pending'},{value:'in_progress',label:'In Progress'},{value:'blocked',label:'Blocked'},{value:'completed',label:'Done'}];
+        V.statusDDOptions=(d.primary?[]:[{value:'unassigned',label:'Unassigned'}]).concat([{value:'not_started',label:'Pending'},{value:'in_progress',label:'In Progress'},{value:'blocked',label:'Blocked'},{value:'completed',label:'Done'}]);
         V.deptDDOptions=[{value:'',label:'Select department'}].concat(['Technology','Marketing','Strategic Development Initiative','CEO Office','Operations','Sales','Chairman Office','Legal','Admin','CTO Office','Call Center','Research','Corporate Sales','Vice Chairman Office','Finance','Transaction Services','HR','Transport'].map(x=>({value:x,label:x})));
         V.departmentNode=React.createElement('select',{
           value:V.dDept,onChange:e=>this.setD('dept',e.target.value),
-          style:{width:'100%',height:46,border:'1px solid #E0E0E0',borderRadius:4,padding:'0 38px 0 14px',fontSize:14,fontFamily:'inherit',outline:0,color:'#101721',background:'#fff',cursor:'pointer'}
+          style:{width:'100%',height:46,border:'1px solid #E0E0E0',borderRadius:4,padding:'0 38px 0 14px',font:'500 14px/18px Graphik,Inter,system-ui,sans-serif',outline:0,color:'rgba(16,23,33,.94)',background:'#fff',cursor:'pointer'}
         },V.deptDDOptions.map(o=>React.createElement('option',{key:o.value,value:o.value},o.label)));
         V.today=this.NOW;
         V.wsOptions=this.WS; V.ownerOptions=this.OWNERS;
         V.setW=e=>this.setD('ws',e.target.value); V.setName=e=>this.setD('name',e.target.value);
-        V.setPrio=e=>this.setD('prio',e.target.value); V.setDesc=e=>this.setD('desc',e.target.value); V.setDue=e=>this.setD('due',e.target.value); V.setStart=e=>this.setD('start',e.target.value);
+        V.setPrio=e=>this.setD('prio',e.target.value); V.setDesc=e=>this.setD('desc',e.target.value); V.setDue=e=>this.setDueDate(e.target.value); V.setStart=e=>this.setStartDate(e.target.value);
         V.setRevised=e=>this.setD('revised',e.target.value); V.setStatus=e=>this.setD('status',e.target.value); V.setPrimary=e=>this.setPrimaryAndDepartment(e.target.value);
         V.setRemark=e=>this.setD('remark',e.target.value); V.setClosing=e=>this.setD('closeRemark',e.target.value); V.toggleFail=e=>this.setD('fail',e.target.checked);
         // sub-tasks (add-form only, editable roles)
         V.dShowSub=coreEnabled;
         const subs=d.subs||[];
         V.subOwnerOptions=[{value:'',label:'Select Task Owner…'}].concat(this.OWNERS.map(o=>({value:o,label:o})));
-        V.subRows=subs.map((s,i)=>({value:s.name||'', owner:s.owner||'', onInput:(e)=>this.setSub(i,'name',e.target.value), onOwnerChange:(v)=>this.setSub(i,'owner',v), onRemove:()=>this.removeSub(i)}));
+        V.subRows=subs.map((s,i)=>{ const hasName=!!String(s.name||'').trim(), hasOwner=!!s.owner, validate=!!d.validationAttempted; return {value:s.name||'',owner:s.owner||'',nameMissing:validate&&hasOwner&&!hasName,ownerMissing:validate&&hasName&&!hasOwner,onInput:(e)=>this.setSub(i,'name',e.target.value),onOwnerChange:(v)=>this.setSub(i,'owner',v),onRemove:()=>this.removeSub(i)}; });
         V.onAddSub=()=>this.addSub();
         // revised conditional: mandatory if due date is in the future (> today)
-        V.dRevisedReq = '(optional)';
+        V.dRevisedReq = '';
+        V.dRemarkPlaceholder = V.dRevisedChanged ? 'Reason for revised timeline' : d.status==='blocked' ? 'What is blocking this task?' : d.status==='completed' ? 'Add a closing remark' : 'Add a remark…';
         V.dRevisedHelp=false; V.dRevisedHelpMsg='';
-        V.formHasRoleNote = !coreEnabled;
+        V.formHasRoleNote = false;
         V.formRoleNote = statusEnabled?'Task details are locked. You can update status only.':'This task is read-only for the selected user.';
         V.showSaveBtn = (dw.mode==='add'&&coreEnabled&&_astep===2)||(dw.mode==='edit'&&(coreEnabled||statusEnabled));
-        V.formError=!!d.error; V.formErrorMsg=d.error;
+        V.remarkErrorMsg=V.remarkMissing?d.error:'';
+        V.formError=!!d.error&&!V.remarkMissing; V.formErrorMsg=d.error;
         V.onSaveDraft=()=>this.saveDraft();
       }
     }
@@ -2387,6 +2523,15 @@ class Component extends DCLogic {
       V.onSMBlockerOwner=(e)=>this.setSM('blockerOwner',e.target.value);
       V.onSMReopen=(e)=>this.setSM('reopenReason',e.target.value);
       V.smError=!!sm.error; V.smErrorMsg=sm.error;
+      V.smClosingMissing=V.smError&&V.smIsComplete&&!String(sm.closingRemark||'').trim();
+      V.smBlockerReasonMissing=V.smError&&V.smIsBlock&&!String(sm.blockerReason||'').trim();
+      V.smDateMissing=V.smError&&(V.smIsRevise||V.smIsDue)&&!String(sm.date||'').trim();
+      V.smReviseReasonMissing=V.smError&&V.smIsRevise&&!String(sm.reviseReason||'').trim();
+      const smInvalid=missing=>'border:'+(missing?'1px solid var(--red);box-shadow:0 0 0 1px var(--red)':'1px solid #E0E0E0');
+      V.smClosingStyle='width:100%;min-height:64px;border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;outline:0;resize:vertical;'+smInvalid(V.smClosingMissing);
+      V.smBlockerReasonStyle='width:100%;min-height:60px;border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;outline:0;resize:vertical;margin-bottom:12px;'+smInvalid(V.smBlockerReasonMissing);
+      V.smDateStyle='width:100%;height:38px;border-radius:10px;padding:0 11px;font-size:13px;font-family:inherit;outline:0;background:#fff;'+smInvalid(V.smDateMissing);
+      V.smReviseReasonStyle='width:100%;min-height:60px;border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;outline:0;resize:vertical;'+smInvalid(V.smReviseReasonMissing);
       V.smCta= sm.kind==='complete'?'Mark as Completed' : sm.kind==='block'?'Mark as Blocked' : sm.kind==='revise'?'Save Revised Date' : sm.kind==='due'?'Save Due Date' : 'Reopen Task';
       V.smCtaStyle= 'flex:1;height:40px;border:0;color:#fff;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;background:'
         + (sm.kind==='block' ? 'var(--red)' : sm.kind==='complete' ? 'var(--emerald)' : sm.kind==='revise' ? '#c98a12' : 'var(--violet)');

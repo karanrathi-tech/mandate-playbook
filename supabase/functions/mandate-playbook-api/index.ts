@@ -67,7 +67,7 @@ async function state() {
   const [mandateResult, employeeResult, taskResult] = await Promise.all([
     db.from("mandates").select("external_id,name,developer,city,launch_date,mandate_type,has_checklist,pnl_owner:users!mandates_pnl_owner_id_fkey(external_user_id,name),mandate_team_leads(position,user:users(external_user_id,name))").order("external_id"),
     db.from("users").select("external_user_id,name,email,display_color,department").eq("is_active", true).order("name"),
-    db.from("tasks").select("id,client_id,category,task_description,subtask_description,priority,status,start_date,due_date,revised_due_date,primary_owner:users!tasks_primary_owner_id_fkey(external_user_id,name),remarks,closing_remarks,blocker_reason,is_external,sort_order,mandates!inner(external_id)").is("deleted_at", null).order("sort_order"),
+    db.from("tasks").select("id,client_id,category,task_description,subtask_description,priority,status,start_date,due_date,revised_due_date,primary_owner:users!tasks_primary_owner_id_fkey(external_user_id,name),blocker_owner:users!tasks_blocker_owner_id_fkey(external_user_id,name),remarks,closing_remarks,blocker_reason,is_external,sort_order,mandates!inner(external_id),task_revisions(revision_index,from_date,to_date,changed_by,changed_label,reason),task_due_changes(change_index,from_date,to_date,changed_by,changed_label)").is("deleted_at", null).order("sort_order"),
   ]);
   if (mandateResult.error) throw mandateResult.error;
   if (employeeResult.error) throw employeeResult.error;
@@ -88,7 +88,10 @@ async function state() {
       id:t.client_id||t.id, mandateId:t.mandates.external_id, ws:t.category, name:t.task_description, stage:"",
       start:t.start_date||"", due:t.due_date, revised:t.revised_due_date||"", status:fromDbStatus(t.status), prio:t.priority,
       primaryOwnerId:t.primary_owner?.external_user_id || "", primary:t.primary_owner?.name || "", supporting:[], external:!!t.is_external,
-      desc:t.subtask_description||"", remark:t.remarks||"", closeRemark:t.closing_remarks||"", blockerReason:t.blocker_reason||"", subtasks:[],
+      desc:t.subtask_description||"", remark:t.remarks||"", closeRemark:t.closing_remarks||"", blockerReason:t.blocker_reason||"",
+      blockerOwnerId:t.blocker_owner?.external_user_id || "", blockerOwner:t.blocker_owner?.name || "", subtasks:[],
+      revisions:(t.task_revisions || []).sort((a:any,b:any)=>a.revision_index-b.revision_index).map((revision:any)=>({from:revision.from_date,to:revision.to_date,by:revision.changed_by||"Task Owner",when:revision.changed_label||"",reason:revision.reason||""})),
+      dueChanges:(t.task_due_changes || []).sort((a:any,b:any)=>a.change_index-b.change_index).map((change:any)=>({from:change.from_date,to:change.to_date,by:change.changed_by||"Team Lead",when:change.changed_label||""})),
     })),
   };
 }
@@ -109,8 +112,12 @@ async function launch(body:any) {
   return json({mandateId:mandateExternalId,createdTaskCount:rows.length},201);
 }
 
-const coreKeys = ["mandate_id","category","task_description","subtask_description","priority","start_date","due_date","revised_due_date","primary_owner_id","remarks","closing_remarks","blocker_reason","is_external","sort_order"];
-const same = (a:any,b:any) => (a ?? null) === (b ?? null);
+const coreKeys = ["mandate_id","category","task_description","subtask_description","priority","start_date","due_date","revised_due_date","primary_owner_id","blocker_owner_id","remarks","closing_remarks","blocker_reason","is_external","sort_order"];
+const taskOwnerProtectedKeys = coreKeys.filter((key) => !["revised_due_date", "remarks", "blocker_owner_id", "blocker_reason"].includes(key));
+const same = (a:any,b:any) => {
+  const normalize = (value:any) => value === "" || value === undefined ? null : value;
+  return normalize(a) === normalize(b);
+};
 
 async function syncTasks(body:any) {
   const actor = await actorFromExternalId(body.userId);
@@ -125,7 +132,8 @@ async function syncTasks(body:any) {
     const status=toDbStatus(String(t.status||"unassigned"));
     const priority=String(t.prio||"medium");
     const owner = t.primaryOwnerId ? access.usersByExternal.get(String(t.primaryOwnerId)) : access.usersByName.get(String(t.primary||"").toLowerCase());
-    const row:any={client_id:String(t.id),mandate_id:mandate.id,category:String(t.ws||"Management"),task_description:String(t.name||"Untitled task"),subtask_description:String(t.desc||""),priority:validPriority.has(priority)?priority:"medium",status:validStatus.has(status)?status:"unassigned",start_date:t.start||null,due_date:t.due||new Date().toISOString().slice(0,10),revised_due_date:t.revised||null,primary_owner_id:owner?.id||null,task_owner_name:null,remarks:String(t.remark||""),closing_remarks:String(t.closeRemark||""),blocker_reason:String(t.blockerReason||""),is_external:!!t.external,sort_order:index,deleted_at:null};
+    const blockerOwner = t.blockerOwnerId ? access.usersByExternal.get(String(t.blockerOwnerId)) : access.usersByName.get(String(t.blockerOwner||"").toLowerCase());
+    const row:any={client_id:String(t.id),mandate_id:mandate.id,category:String(t.ws||"Management"),task_description:String(t.name||"Untitled task"),subtask_description:String(t.desc||""),priority:validPriority.has(priority)?priority:"medium",status:validStatus.has(status)?status:"unassigned",start_date:t.start||null,due_date:t.due||new Date().toISOString().slice(0,10),revised_due_date:t.revised||null,primary_owner_id:owner?.id||null,blocker_owner_id:blockerOwner?.id||null,task_owner_name:null,remarks:String(t.remark||""),closing_remarks:String(t.closeRemark||""),blocker_reason:String(t.blockerReason||""),is_external:!!t.external,sort_order:index,deleted_at:null};
     const existing:any=existingByClient.get(row.client_id);
     const isLeader=access.leadersByMandate.get(mandate.id)?.has(actor.id) || false;
     if(!existing){
@@ -135,10 +143,11 @@ async function syncTasks(body:any) {
     }
     const statusChanged=!same(row.status,existing.status);
     const coreChanged=coreKeys.some((key)=>!same(row[key],existing[key]));
+    const taskOwnerProtectedChanged=taskOwnerProtectedKeys.some((key)=>!same(row[key],existing[key]));
     if(isLeader){
       if(!same(row.primary_owner_id,existing.primary_owner_id) && row.primary_owner_id && access.leaderIds.has(row.primary_owner_id)) throw new ApiError("P&L owners and TLs cannot be assigned as task owners.",403);
     } else if(existing.primary_owner_id===actor.id){
-      if(coreChanged) throw new ApiError("Task owners can update status only.",403);
+      if(taskOwnerProtectedChanged) throw new ApiError("Task owners can update status, revised date, remarks, and blocker details only.",403);
     } else if(statusChanged||coreChanged){
       throw new ApiError("You can view this task, but you cannot update it.",403);
     }
@@ -146,6 +155,26 @@ async function syncTasks(body:any) {
   });
 
   if(rows.length){const {error}=await db.from("tasks").upsert(rows,{onConflict:"client_id",ignoreDuplicates:false});if(error)throw error;}
+  if(rows.length){
+    const clientIds=rows.map((row:any)=>row.client_id);
+    const {data:savedTasks,error:savedTasksError}=await db.from("tasks").select("id,client_id").in("client_id",clientIds);
+    if(savedTasksError)throw savedTasksError;
+    const taskIdByClient=new Map((savedTasks||[]).map((task:any)=>[task.client_id,task.id]));
+    const revisionRows:any[]=[];
+    incoming.forEach((task:any)=>{
+      const taskId=taskIdByClient.get(String(task.id));
+      if(!taskId||!Array.isArray(task.revisions))return;
+      task.revisions.forEach((revision:any,index:number)=>revisionRows.push({task_id:taskId,revision_index:index,from_date:revision.from||task.due,to_date:revision.to,changed_by:String(revision.by||actor.name||"Task Owner"),changed_label:String(revision.when||""),reason:String(revision.reason||"")}));
+    });
+    if(revisionRows.length){const {error:revisionError}=await db.from("task_revisions").upsert(revisionRows,{onConflict:"task_id,revision_index",ignoreDuplicates:false});if(revisionError)throw revisionError;}
+    const dueChangeRows:any[]=[];
+    incoming.forEach((task:any)=>{
+      const taskId=taskIdByClient.get(String(task.id));
+      if(!taskId||!Array.isArray(task.dueChanges))return;
+      task.dueChanges.forEach((change:any,index:number)=>dueChangeRows.push({task_id:taskId,change_index:index,from_date:change.from,to_date:change.to,changed_by:String(change.by||actor.name||"Team Lead"),changed_label:String(change.when||"")}));
+    });
+    if(dueChangeRows.length){const {error:dueChangeError}=await db.from("task_due_changes").upsert(dueChangeRows,{onConflict:"task_id,change_index",ignoreDuplicates:false});if(dueChangeError)throw dueChangeError;}
+  }
   const keep=new Set(rows.map((r:any)=>r.client_id));
   const removed=(existingRows||[]).filter((t:any)=>t.client_id&&!keep.has(t.client_id));
   for(const task of removed){
