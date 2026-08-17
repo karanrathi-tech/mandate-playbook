@@ -86,7 +86,7 @@ class Component extends DCLogic {
         style.textContent='.dd-field{position:relative;z-index:1!important}.dd-field:focus-within{z-index:10000!important}.dd-field:focus-within [role="listbox"],.dd-field:focus-within [role="menu"]{z-index:10001!important;background:#fff!important;box-shadow:0 12px 30px rgba(16,23,33,.16)!important}.mpb-date-input{color:transparent!important;caret-color:transparent!important;padding-right:46px!important}.mpb-date-overlay{position:absolute;display:flex;align-items:center;pointer-events:none;color:rgba(16,23,33,.94);font:500 14px/18px Graphik,Inter,system-ui,sans-serif;white-space:nowrap;z-index:2}';
         document.head.appendChild(style);
       }
-      document.querySelectorAll('input[type="date"]').forEach(input=>{
+      document.querySelectorAll('input[type="date"]:not(.list-inline-date-input)').forEach(input=>{
         const parent=input.parentElement; if(!parent)return;
         const inputStyle=getComputedStyle(input);
         if(inputStyle.display==='none' || input.offsetParent===null){
@@ -176,7 +176,7 @@ class Component extends DCLogic {
     try{e.preventDefault();e.stopPropagation();}catch(_){}
     const el = this._dueRefs && this._dueRefs[id];
     if(el){
-      el.style.display='inline-block';
+      if(el.parentElement&&getComputedStyle(el.parentElement).position==='static') el.parentElement.style.position='relative';
       el.value=dueVal||'';
       el.focus();
       try{ el.showPicker && el.showPicker(); }catch(_){}
@@ -199,6 +199,7 @@ class Component extends DCLogic {
   saveDueEdit(id,val){
     const t=this.tasks.find(x=>x.id===id); if(!t) return;
     if(!val){ return; } // incomplete date mid-typing — keep editor open, wait for more input
+    if(val<this.realToday()){ this.toast('Due date cannot be in the past.','error'); return; }
     if(t.start && val<t.start){ this.toast('Due date cannot be before the start date ('+this.fmt(t.start)+').','error'); return; }
     const changed = t.due!==val;
     if(changed){ t.dueChanges=t.dueChanges||[]; t.dueChanges.push({from:t.due,to:val,by:this.roleName()||'Team Lead',when:this.fmt(this.realToday())+' · just now'}); }
@@ -414,6 +415,11 @@ class Component extends DCLogic {
   updateStatus(id,val){
     const t=this.tasks.find(x=>x.id===id); if(!t || t.status===val) return;
     if(!this.canChangeTaskStatus(t)){ this.toast('You can change the status only for tasks assigned to you.','error'); return; }
+    if((!t.primary||t.primary==='Unassigned')&&val!=='unassigned'){
+      this.setState({listStatusMenuId:null,unassignedAssign:{taskId:t.id,target:val,pickedId:''}}); return;
+    }
+    if(t.status==='completed'&&val==='unassigned'){ this.openSM('reopen',id,val,{openUnassignOwnerNext:true}); return; }
+    if(val==='unassigned'){ this.openSM('unassign',id,val); return; }
     if(val==='completed'){ this.openSM('complete',id,val); return; }   // ask closing remark
     if(val==='blocked'){ this.openSM('block',id,val); return; }        // ask blocker reason (mandatory)
     if(t.status==='completed'){ this.openSM('reopen',id,val); return; } // confirm reopen
@@ -764,6 +770,7 @@ class Component extends DCLogic {
       this.setState({dragTaskId:null, unassignedAssign:{taskId:t.id,target:k,pickedId:''}}); return;
     }
     if(this.state.boardFail){ this.setState({boardFail:false, dragTaskId:null}); this.toast('Task status update failed — card reverted to previous status.','error'); return; }
+    if(t.status==='completed'&&k==='unassigned'){ this.openSM('reopen',id,k,{openUnassignOwnerNext:true}); return; }
     if(k==='unassigned'){ this.openSM('unassign',id,k); return; }
     if(k==='completed'){ this.openSM('complete',id,k); return; }
     if(k==='blocked'){ this.openSM('block',id,k); return; }
@@ -809,18 +816,35 @@ class Component extends DCLogic {
     if(t&&emp){ t.primary=emp.name; t.primaryOwnerId=emp.id; t.dept=emp.department||emp.dept||''; this.toast('Task owner transferred to '+emp.name,'success'); }
     this.setState({transfer:null});
   }
+  openPriority(taskId,e){
+    try{e.preventDefault();e.stopPropagation();}catch(_){}
+    const t=this.tasks.find(x=>x.id===taskId); if(!t||!this.canManageMandate(t.mandateId)) return;
+    this.setState({priorityModal:{taskId,picked:t.prio}});
+  }
+  closePriority(){ this.setState({priorityModal:null}); }
+  pickPriority(value){ this.setState(s=>({priorityModal:{...s.priorityModal,picked:value}})); }
+  confirmPriority(){
+    const pm=this.state.priorityModal; if(!pm||!pm.picked) return;
+    const t=this.tasks.find(x=>x.id===pm.taskId); if(!t) return;
+    const changed=t.prio!==pm.picked; t.prio=pm.picked;
+    this.setState({priorityModal:null});
+    if(changed) this.toast('Priority updated to '+({high:'High',medium:'Medium',low:'Low'}[pm.picked]||pm.picked),'success');
+  }
   confirmSM(){ const sm=this.state.statusModal;
     if(sm.kind==='complete'){ this.applyStatus(sm.id,'completed',{closingRemark:(sm.closingRemark||'').trim()}); }
     else if(sm.kind==='block'){ if(!sm.blockerReason.trim()){ this.setState(s=>({statusModal:{...s.statusModal,error:'Please add a blocker reason.'}})); return; } this.applyStatus(sm.id,'blocked',{blockerReason:sm.blockerReason,blockerOwner:sm.blockerOwner}); }
     else if(sm.kind==='revise'){
+      const t=this.tasks.find(x=>x.id===sm.id);
       if(!sm.date){ this.setState(s=>({statusModal:{...s.statusModal,error:'Please choose a revised date.'}})); return; }
-      if(sm.date<this.NOW){ this.setState(s=>({statusModal:{...s.statusModal,error:'Revised date can’t be in the past.'}})); return; }
+      if(sm.date<this.realToday()){ this.setState(s=>({statusModal:{...s.statusModal,error:'Revised date can’t be in the past.'}})); return; }
+      if(t&&t.start&&sm.date<t.start){ this.setState(s=>({statusModal:{...s.statusModal,error:'Revised date cannot be before the start date ('+this.fmt(t.start)+').'}})); return; }
       if(!sm.reviseReason.trim()){ this.setState(s=>({statusModal:{...s.statusModal,error:'Please add a reason for the revised timeline.'}})); return; }
       this.applyRevise(sm.id,sm.date,sm.reviseReason);
     }
     else if(sm.kind==='due'){
       const t=this.tasks.find(x=>x.id===sm.id);
       if(!sm.date){ this.setState(s=>({statusModal:{...s.statusModal,error:'Please choose a due date.'}})); return; }
+      if(sm.date<this.realToday()){ this.setState(s=>({statusModal:{...s.statusModal,error:'Due date cannot be in the past.'}})); return; }
       if(t&&t.start&&sm.date<t.start){ this.setState(s=>({statusModal:{...s.statusModal,error:'Due date cannot be before the start date ('+this.fmt(t.start)+').'}})); return; }
       this.applyDueChange(sm.id,sm.date);
     }
@@ -838,6 +862,7 @@ class Component extends DCLogic {
       }
     }
     else {
+      if(sm.openUnassignOwnerNext){ this.openSM('unassign',sm.id,'unassigned',{reopenReason:sm.reopenReason||''}); return; }
       this.applyStatus(sm.id,sm.target,{reopenReason:sm.reopenReason});
     } }
   applyDueChange(id,date){
@@ -1853,8 +1878,8 @@ class Component extends DCLogic {
 
       const mkRow=(t)=>{ const m=this.mandate(t.mandateId); const od=this.isOverdue(t); const eff=this.effDate(t); const delta=this.revisedDeltaDays(t); const canInline=this.canChangeTaskStatus(t); const locked=t.status==='completed';
         const canEditDueReal = this.canManageMandate(t.mandateId) && !locked && !(m&&m.closed);
-        const canEditRevisedInline = false;
-        const canEditDateCell = canEditDueReal;
+        const canEditRevisedInline = this.isMine(t) && !locked && !(m&&m.closed);
+        const canEditDateCell = canEditDueReal || canEditRevisedInline;
         const sup=(t.supporting||[]).filter(s=> r!=='dev');
         const subs=t.subtasks||[]; const hasSubs=subs.length>0; const subOpen=!!(st.listExpanded||{})[t.id];
         const subDone=subs.filter(x=>x.status==='completed').length;
@@ -1884,20 +1909,20 @@ class Component extends DCLogic {
           // BSM / Dev use the same calendar affordance to set a revised date (with a mandatory reason).
           canEditDue: canEditDateCell, showDueIcon: true,
           dueEditing: st.dueEdit===t.id, dueViewMode: st.dueEdit!==t.id,
-          dueTitle: (r==='lead'||r==='pnl') ? (locked?'Completed and locked — reopen to change the due date.':(m&&m.closed)?'Mandate is launched — the checklist is locked.':'Click to change due date') : (r==='bsm'||r==='dev') ? (locked?'Completed and locked — reopen to change the revised date.':(m&&m.closed)?'Mandate is launched — the checklist is locked.':'Click to set a revised date') : '',
-          onDueClick: canEditDueReal ? ((e)=>{ try{e.preventDefault();e.stopPropagation();}catch(_){} this.openDueModalDirect(t.id); }) : canEditRevisedInline ? ((e)=>{ try{e.preventDefault();e.stopPropagation();}catch(_){} this.openReviseModalDirect(t.id); }) : (()=>{}),
-          dueCellStyle:'font-size:12px;font-weight:600;padding:2px 6px;margin:-2px -6px;border-radius:5px;'+(st.dueEdit===t.id?'display:none;':(canEditDateCell?'display:inline-flex;align-items:center;gap:7px;cursor:pointer;':'display:inline-block;'))+'color:rgba(16,23,33,.94)',
+          dueTitle: canEditDueReal ? 'Click to change due date' : canEditRevisedInline ? 'Click to set a revised date' : locked ? 'Completed and locked — reopen to change the date.' : (m&&m.closed) ? 'Mandate is launched — the checklist is locked.' : '',
+          onDueClick: canEditDateCell ? ((e)=>this.startDueEdit(t.id,e,canEditDueReal?t.due:(t.revised||t.due))) : (()=>{}),
+          dueCellStyle:'font-size:12px;font-weight:600;padding:2px 6px;margin:-2px -6px;border-radius:5px;'+(canEditDateCell?'display:inline-flex;align-items:center;gap:7px;cursor:pointer;':'display:inline-block;')+'color:rgba(16,23,33,.94)',
           dueHoverStyle: canEditDateCell ? 'background:var(--violet);color:var(--violet-lightest)' : '',
           onDueEnter: canEditDateCell ? (()=>this.setState({dueHoverId:t.id})) : (()=>{}),
           onDueLeave: canEditDateCell ? (()=>this.setState(s=>s.dueHoverId===t.id?{dueHoverId:null}:null)) : (()=>{}),
           dueIconStyle:'flex:none;color:'+(canEditDateCell?'inherit':'var(--gray)')+';transition:opacity .12s ease;opacity:'+(canEditDateCell?(st.dueHoverId===t.id?'1':'0'):'0.6'),
           dueInputVal: canEditDueReal ? t.due : (t.revised||t.due),
-          dueInputMin: canEditRevisedInline ? this.NOW : '',
+          dueInputMin: ((t.start||'')>this.realToday()?(t.start||''):this.realToday()),
           onDueInputChange: canEditDueReal ? ((e)=>this.saveDueEdit(t.id, e.target.value)) : ((e)=>this.openReviseModal(t.id, e.target.value)),
           onDueInputBlur:()=>this.cancelDueEdit(),
           onDueInputKeyDown:(e)=>{ if(e.key==='Escape') this.cancelDueEdit(); },
           dueInputRef:(el)=>{ if(el){ this._dueRefs=this._dueRefs||{}; this._dueRefs[t.id]=el; } },
-          dueInputStyle:'display:'+(st.dueEdit===t.id?'inline-block':'none')+';font-size:12px;font-weight:600;border:1px solid var(--violet);border-radius:5px;padding:2px 5px;font-family:inherit;outline:0;width:122px;color:rgba(16,23,33,.94);background:#fff',
+          dueInputStyle:'position:absolute;left:0;top:0;width:122px;height:28px;opacity:0;pointer-events:none;border:0;padding:0',
           hasRevised:!!t.revised, revisedLabel:this.fmt(t.revised),
           hasDueStatus: !locked, dueStatusLabel: this.dueTagLabel(t),
           dueStatusStyle:'display:inline-block;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;padding:2px 8px;border-radius:5px;white-space:nowrap;margin-bottom:3px;'+(od?'background:var(--red-light);color:var(--red)':(this.dueSoon(t)?'background:var(--yellow-light);color:#b0810f':'background:#EFEFEF;color:var(--gray-dark)')),
@@ -1919,6 +1944,10 @@ class Component extends DCLogic {
           onStatusChange:(e)=>this.updateStatus(t.id,e.target.value),
           onStatusChangeV:(v)=>this.updateStatus(t.id,v),
           prioLabel:P[t.prio].label, prioStyle:prioBadge(t.prio), prioFlames:flames(t.prio),
+          canEditPriority:this.canManageMandate(t.mandateId),
+          onPriorityClick:this.canManageMandate(t.mandateId)?((e)=>this.openPriority(t.id,e)):(()=>{}),
+          priorityCellStyle:'display:flex;align-items:center;gap:3px;width:max-content;padding:5px 7px;margin:-5px -7px;border-radius:6px;'+(this.canManageMandate(t.mandateId)?'cursor:pointer;':'cursor:default;'),
+          priorityTitle:this.canManageMandate(t.mandateId)?'Click to change priority':'',
           remarkCell: r==='dev' ? (t.remark?'—':'') : (t.remark?('“'+t.remark.slice(0,44)+(t.remark.length>44?'…':'')+'”'):'—'),
           showEdit:this.canEditTask(t), showDelete:this.canManageMandate(t.mandateId),
           menuOpen: st.rowMenuId===t.id,
@@ -2359,6 +2388,7 @@ class Component extends DCLogic {
         const _chev="";
         V.dStatusStyle= statusEnabled?inp:inpDis;
         V.dRevisedStyle= revisedEnabled?inp:inpDis;
+        V.dRevisedMin=((d.start||'')>this.realToday()?(d.start||''):this.realToday());
         V.dRemarkStyle= remarkEnabled?'width:100%;min-height:64px;border:1px solid #E0E0E0;border-radius:4px;padding:11px 14px;font-size:14px;font-family:inherit;outline:0;resize:vertical':'width:100%;min-height:64px;border:1px solid #EEE;border-radius:4px;padding:11px 14px;font-size:14px;font-family:inherit;outline:0;resize:vertical;background:#F7F7F7;color:var(--gray)';
         V.dTextareaStyle= coreEnabled?'width:100%;min-height:60px;border:1px solid #E0E0E0;border-radius:4px;padding:11px 14px;font-size:14px;font-family:inherit;outline:0;resize:vertical':'width:100%;min-height:60px;border:1px solid #EEE;border-radius:4px;padding:11px 14px;font-size:14px;font-family:inherit;outline:0;resize:vertical;background:#F7F7F7;color:var(--gray)';
         V.dWs=d.ws; V.dName=d.name; V.dPrio=d.prio; V.dDesc=d.desc; V.dStart=d.start||this.realToday(); V.startDateMin=dw.mode==='add'?this.realToday():''; V.dDue=d.due; V.dRevised=d.revised; V.dStatus=d.status; V.dPrimary=d.primary; V.dRemark=d.remark; V.dClosing=d.closeRemark||''; V.dFail=!!d.fail;
@@ -2541,6 +2571,28 @@ class Component extends DCLogic {
           React.createElement('button', {type:'button', onClick:V.transferConfirmDisabled?undefined:V.onConfirmTransfer, disabled:V.transferConfirmDisabled, style:{height:40,padding:'0 20px',borderRadius:4,font:'600 13px/1 Graphik,Inter,sans-serif',cursor:V.transferConfirmDisabled?'not-allowed':'pointer',border:'none',background:V.transferConfirmDisabled?'#F3F3F3':'var(--violet)',color:V.transferConfirmDisabled?'#9FA6B0':'#fff'}}, 'Transfer')
         );
     }
+    const pm=st.priorityModal;
+    V.priorityModalOpen=!!pm;
+    if(pm){
+      const t=this.tasks.find(x=>x.id===pm.taskId)||{};
+      const labels={high:'High',medium:'Medium',low:'Low'};
+      V.priorityTaskName=t.name||'';
+      V.priorityCurrentLabel=labels[t.prio]||t.prio||'';
+      V.priorityOptions=['high','medium','low'].map(value=>{
+        const picked=pm.picked===value, current=t.prio===value;
+        return {value,label:labels[value],picked,current,stars:[0,1,2].map(i=>starSvg(i<(value==='high'?3:value==='medium'?2:1))),onPick:()=>this.pickPriority(value),rowStyle:'display:flex;align-items:center;gap:12px;padding:12px;border-radius:6px;cursor:pointer;border:1px solid '+(picked?'var(--violet)':'transparent')+';background:'+(picked?'var(--violet-lightest)':'#fff')};
+      });
+      const changed=!!pm.picked&&pm.picked!==t.prio;
+      V.priorityConfirmDisabled=!changed;
+      V.onClosePriority=()=>this.closePriority();
+      V.onConfirmPriority=()=>this.confirmPriority();
+      V.priorityBodyStyle={flex:'0 0 300px',height:300,overflow:'auto',padding:'0 24px 24px',display:'flex',flexDirection:'column'};
+      V.priorityFooterNode=React.createElement(React.Fragment,null,
+        React.createElement('button',{type:'button',onClick:V.onClosePriority,style:{height:40,padding:'0 18px',borderRadius:4,font:'500 13px/1 Graphik,Inter,sans-serif',cursor:'pointer',border:'1px solid #E0E0E0',background:'#fff',color:'#6B7785'}},'Cancel'),
+        React.createElement('span',{style:{flex:1}}),
+        React.createElement('button',{type:'button',onClick:changed?V.onConfirmPriority:undefined,disabled:!changed,style:{height:40,padding:'0 20px',borderRadius:4,font:'600 13px/1 Graphik,Inter,sans-serif',cursor:changed?'pointer':'not-allowed',border:'none',background:changed?'var(--violet)':'#F3F3F3',color:changed?'#fff':'#9FA6B0'}},'Change Priority')
+      );
+    }
 
     // ================= STATUS-CHANGE MODAL =================
     const sm=st.statusModal;
@@ -2553,6 +2605,7 @@ class Component extends DCLogic {
       V.smTargetLabel= smDisplayTarget?S[smDisplayTarget].label:'';
       V.smSourceLabel=(S[t.status]&&S[t.status].label)||t.status||'';
       V.smDueLabel=this.fmt(t.due); V.smDate=sm.date; V.smReviseReason=sm.reviseReason;
+      V.smDateMin=((t.start||'')>this.realToday()?(t.start||''):this.realToday());
       V.onSMDate=(e)=>this.setSM('date',e.target.value);
       V.onSMReviseReason=(e)=>this.setSM('reviseReason',e.target.value);
       V.smClosing=sm.closingRemark; V.smBlockerReason=sm.blockerReason; V.smBlockerOwner=sm.blockerOwner; V.smReopen=sm.reopenReason; V.smReopenOwner=sm.reopenOwner||'';
