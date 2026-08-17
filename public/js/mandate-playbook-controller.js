@@ -118,8 +118,8 @@ class Component extends DCLogic {
   accessibleMandateIds(){
     const uid=this.currentUserId();
     const managed=this.mandates.filter(m=>m.pnlOwnerId===uid||(m.teamLeadIds||[]).includes(uid)).map(m=>m.id);
-    if(managed.length) return new Set(managed);
-    return new Set(this.tasks.filter(t=>t.primaryOwnerId===uid).map(t=>t.mandateId));
+    const assigned=this.tasks.filter(t=>t.primaryOwnerId===uid).map(t=>t.mandateId);
+    return new Set([...managed,...assigned]);
   }
   canViewMandate(id){ return this.accessibleMandateIds().has(id); }
   mTasks(id){ return this.canViewMandate(id)?this.tasks.filter(t=>t.mandateId===id):[]; }
@@ -144,6 +144,9 @@ class Component extends DCLogic {
   }
   canEditTask(t){ // opens edit drawer
     return this.canManageMandate(t.mandateId) || this.isMine(t);
+  }
+  canChangeTaskStatus(t){
+    return !!(t&&(this.canManageMandate(t.mandateId)||this.isMine(t)));
   }
 
   // ---------- navigation ----------
@@ -207,7 +210,13 @@ class Component extends DCLogic {
   // ---------- drawer / form ----------
   openView(id){ this.openEdit(id); } // unified: always open the single Edit Details drawer
   openAdd(){ const st=this.state; let _sm=this.mandates.filter(m=>this.canManageMandate(m)); if(st.gfSel) _sm=_sm.filter(m=>st.gfSel[m.id]); const _defM=(st.mandateId&&this.canManageMandate(st.mandateId)?st.mandateId:null)||(_sm[0]&&_sm[0].id); if(!_defM){ this.toast('You can create tasks only for mandates where you are the P&L owner or TL.','error'); return; } this.setState({drawer:{mode:'add'}, drawerTab:'details', addStep:1, draft:{mandateId:_defM, ws:this.WS[0],name:'',subs:[],prio:'medium',desc:'',start:this.NOW,due:this.NOW,revised:'',status:'unassigned',primary:'',primaryOwnerId:'',external:false,remark:'',closeRemark:'',fail:false}}); }
-  openEdit(id){ const t=this.tasks.find(x=>x.id===id); const subs=(t.subtasks||[]).map(s=>{ const ownerId=s.primaryOwnerId||s.taskOwnerId||s.ownerId||s.owner_id||''; const employee=ownerId&&this.EMPLOYEES.find(e=>e.id===ownerId); return {name:s.name||s.taskName||'',owner:s.primary||s.owner||s.taskOwner||s.task_owner||(employee&&employee.name)||''}; }); this.setState({drawer:{mode:'edit',taskId:id},drawerTab:'details',draft:{...t,subs,remark:'',blockerOwner:t.blockerOwner||'',blockerOwnerId:t.blockerOwnerId||'',closeRemark:t.closeRemark||'',fail:false}}); }
+  openEdit(id){
+    const t=this.tasks.find(x=>x.id===id);
+    const primaryEmployee=this.EMPLOYEES.find(e=>(t.primaryOwnerId&&e.id===t.primaryOwnerId)||e.name===t.primary);
+    const department=t.dept||(primaryEmployee&&(primaryEmployee.department||primaryEmployee.dept))||'';
+    const subs=(t.subtasks||[]).map(s=>{ const ownerId=s.primaryOwnerId||s.taskOwnerId||s.ownerId||s.owner_id||''; const employee=ownerId&&this.EMPLOYEES.find(e=>e.id===ownerId); return {name:s.name||s.taskName||'',owner:s.primary||s.owner||s.taskOwner||s.task_owner||(employee&&employee.name)||''}; });
+    this.setState({drawer:{mode:'edit',taskId:id},drawerTab:'details',draft:{...t,dept:department,subs,remark:'',blockerOwner:t.blockerOwner||'',blockerOwnerId:t.blockerOwnerId||'',closeRemark:t.closeRemark||'',fail:false}});
+  }
   addNext(){
     const d=this.state.draft||{}; let err='';
     const incompleteSubtask=(d.subs||[]).some(subtask=>{ const hasName=!!String(subtask&&subtask.name||'').trim(), hasOwner=!!(subtask&&subtask.owner); return hasName!==hasOwner; });
@@ -232,12 +241,12 @@ class Component extends DCLogic {
     ev.push({type:'created', title:'Task created', by:(t.ws==='Management'?'Arindom D':'Team Lead'), when:this.fmt(t.start)+' · 09:30 am', note:'Added to the launch checklist under '+t.ws+'.', dot:'var(--violet)'});
     const originalDue=(Array.isArray(t.dueChanges)&&t.dueChanges.length&&t.dueChanges[0].from)||t.due;
     ev.push({type:'due', title:'Due date set', by:'Team Lead', when:this.fmt(t.start)+' · 09:31 am', note:'Target: '+this.fmt(originalDue), dot:'#2f6fdb'});
-    if(Array.isArray(t.dueChanges)) t.dueChanges.forEach(change=>ev.push({type:'due-change',title:'Due date changed',by:change.by||'Team Lead',when:change.when||this.fmt(this.realToday()),note:this.fmt(change.from)+'  →  '+this.fmt(change.to),dot:'#2f6fdb'}));
     if(t.status==='in_progress'||t.status==='completed'||t.status==='blocked') ev.push({type:'status', title:'Status → In Progress', by:who, when:this.fmt(t.start)+' · 02:15 pm', note:'Work started.', dot:'#2f6fdb'});
+    if(Array.isArray(t.dueChanges)) t.dueChanges.forEach(change=>ev.push({type:'due-change',title:'Due date changed',by:change.by||'Team Lead',when:change.when||this.fmt(this.realToday()),note:this.fmt(change.from)+'  →  '+this.fmt(change.to),dot:'#2f6fdb'}));
     if(Array.isArray(t.revisions) && t.revisions.length){
-      t.revisions.forEach(rv=>ev.push({type:'revised', title:'Revised timeline changed', by:rv.by||'Task Owner', when:rv.when||this.fmt(t.due), note:this.fmt(rv.from||t.due)+'  →  '+this.fmt(rv.to), dot:'#c98a12'}));
+      t.revisions.forEach((rv,index)=>ev.push({type:'revised', title:index===0?'Timeline revised':'Revised timeline changed', by:rv.by||'Task Owner', when:rv.when||this.fmt(t.due), note:this.fmt(rv.from||t.due)+'  →  '+this.fmt(rv.to), dot:'#c98a12'}));
     } else if(t.revised){
-      ev.push({type:'revised', title:'Revised timeline changed', by:'Task Owner', when:this.fmt(t.due)+' · 11:00 am', note:this.fmt(t.due)+'  →  '+this.fmt(t.revised), dot:'#c98a12'});
+      ev.push({type:'revised', title:'Timeline revised', by:'Task Owner', when:this.fmt(t.due)+' · 11:00 am', note:this.fmt(t.due)+'  →  '+this.fmt(t.revised), dot:'#c98a12'});
     }
     if(t.remark) ev.push({type:'note', title:'Note added by '+who, by:who, when:this.fmt(t.revised||t.due)+' · 04:20 pm', note:t.remark, dot:'var(--gray)'});
     if(t.status==='blocked') ev.push({type:'status', title:'Status → Blocked', by:who, when:this.fmt(t.revised||t.due)+' · 04:25 pm', note:t.remark||'Blocked pending dependency.', dot:'var(--red)'});
@@ -341,7 +350,7 @@ class Component extends DCLogic {
       else if(d.start && d.due && d.due < d.start) err='Due date cannot be before the start date.';
       else if(!d.status) err='Status is required.';
       else if(!d.prio) err='Priority is required.';
-      else if(!d.primary) err='Task Owner is required.';
+      else if(d.status!=='unassigned'&&!d.primary) err='Task Owner is required for the selected status.';
     }
     if(!err && d.revised && d.revised < this.NOW) err='Revised date must be today or later.';
     if(!err && statusOnly && revisedChanged && !(d.remark||'').trim()) err='Remark is required when setting a revised date.';
@@ -404,6 +413,7 @@ class Component extends DCLogic {
 
   updateStatus(id,val){
     const t=this.tasks.find(x=>x.id===id); if(!t || t.status===val) return;
+    if(!this.canChangeTaskStatus(t)){ this.toast('You can change the status only for tasks assigned to you.','error'); return; }
     if(val==='completed'){ this.openSM('complete',id,val); return; }   // ask closing remark
     if(val==='blocked'){ this.openSM('block',id,val); return; }        // ask blocker reason (mandatory)
     if(t.status==='completed'){ this.openSM('reopen',id,val); return; } // confirm reopen
@@ -738,7 +748,7 @@ class Component extends DCLogic {
   toggleListCol(k){ const DEF={ws:false,stage:false,start:true,owner:true,support:false,due:true,status:true,prio:true,remark:true}; this.setState(s=>{ const cur=s.listCols||{}; const now=cur[k]===undefined?DEF[k]:cur[k]; return {listCols:{...cur,[k]:!now}}; }); }
   canDrag(t){ const m=this.mandate(t.mandateId);
     if(m && m.closed) return false;
-    return this.canManageMandate(t.mandateId) || this.isMine(t); }
+    return this.canChangeTaskStatus(t); }
   dragReason(t){ const m=this.mandate(t.mandateId);
     if(m && m.closed) return 'Mandate is launched — the checklist is locked.';
     if(!this.canDrag(t)) return t.primary?'Assigned to '+t.primary+' — only that task owner or the mandate P&L owner/TL can move it.':'This task must be assigned before its status can change.';
@@ -754,13 +764,21 @@ class Component extends DCLogic {
       this.setState({dragTaskId:null, unassignedAssign:{taskId:t.id,target:k,pickedId:''}}); return;
     }
     if(this.state.boardFail){ this.setState({boardFail:false, dragTaskId:null}); this.toast('Task status update failed — card reverted to previous status.','error'); return; }
+    if(k==='unassigned'){ this.openSM('unassign',id,k); return; }
     if(k==='completed'){ this.openSM('complete',id,k); return; }
     if(k==='blocked'){ this.openSM('block',id,k); return; }
     if(t.status==='completed'){ this.openSM('reopen',id,k); return; }
     this.applyStatus(id,k,{}); }
-  openSM(kind,id,target){ this.setState({statusModal:{kind,id,target,closingRemark:'',blockerReason:'',blockerOwner:'',reopenReason:'',error:''}, dragTaskId:null}); }
+  openSM(kind,id,target,context){
+    const task=this.tasks.find(x=>x.id===id)||{};
+    this.setState({statusModal:{kind,id,target,closingRemark:'',blockerReason:'',blockerOwner:'',reopenReason:'',reopenOwner:task.primary||'',error:'',...(context||{})}, dragTaskId:null});
+  }
   setSM(k,v){ this.setState(s=>({statusModal:{...s.statusModal,[k]:v,error:''}})); }
-  cancelSM(){ this.setState({statusModal:null, dragTaskId:null}); }
+  cancelSM(){
+    const sm=this.state.statusModal;
+    if(sm&&sm.assignedFromUnassigned){ this.applyStatus(sm.id,'not_started',{}); return; }
+    this.setState({statusModal:null, dragTaskId:null});
+  }
   closeUnassignedBlock(){ this.setState({unassignedAssign:null,dragTaskId:null}); }
   setUnassignedOwner(userId){ this.setState(s=>({unassignedAssign:{...s.unassignedAssign,pickedId:userId}})); }
   confirmUnassignedOwner(){
@@ -768,8 +786,8 @@ class Component extends DCLogic {
     const t=this.tasks.find(x=>x.id===ua.taskId), emp=this.EMPLOYEES.find(x=>x.id===ua.pickedId); if(!t||!emp) return;
     t.primary=emp.name; t.primaryOwnerId=emp.id; t.dept=emp.department||emp.dept||'';
     this.setState({unassignedAssign:null},()=>{
-      if(ua.target==='completed') this.openSM('complete',t.id,ua.target);
-      else if(ua.target==='blocked') this.openSM('block',t.id,ua.target);
+      if(ua.target==='completed') this.openSM('complete',t.id,ua.target,{assignedFromUnassigned:true});
+      else if(ua.target==='blocked') this.openSM('block',t.id,ua.target,{assignedFromUnassigned:true});
       else this.applyStatus(t.id,ua.target,{});
     });
   }
@@ -792,7 +810,7 @@ class Component extends DCLogic {
     this.setState({transfer:null});
   }
   confirmSM(){ const sm=this.state.statusModal;
-    if(sm.kind==='complete'){ if(!sm.closingRemark.trim()){ this.setState(s=>({statusModal:{...s.statusModal,error:'A closing remark is required to mark this task complete.'}})); return; } this.applyStatus(sm.id,'completed',{closingRemark:sm.closingRemark}); }
+    if(sm.kind==='complete'){ this.applyStatus(sm.id,'completed',{closingRemark:(sm.closingRemark||'').trim()}); }
     else if(sm.kind==='block'){ if(!sm.blockerReason.trim()){ this.setState(s=>({statusModal:{...s.statusModal,error:'Please add a blocker reason.'}})); return; } this.applyStatus(sm.id,'blocked',{blockerReason:sm.blockerReason,blockerOwner:sm.blockerOwner}); }
     else if(sm.kind==='revise'){
       if(!sm.date){ this.setState(s=>({statusModal:{...s.statusModal,error:'Please choose a revised date.'}})); return; }
@@ -806,7 +824,24 @@ class Component extends DCLogic {
       if(t&&t.start&&sm.date<t.start){ this.setState(s=>({statusModal:{...s.statusModal,error:'Due date cannot be before the start date ('+this.fmt(t.start)+').'}})); return; }
       this.applyDueChange(sm.id,sm.date);
     }
-    else { this.applyStatus(sm.id,sm.target,{reopenReason:sm.reopenReason}); } }
+    else if(sm.kind==='unassign'){
+      const task=this.tasks.find(x=>x.id===sm.id); if(!task) return;
+      task.primary=''; task.primaryOwnerId=''; task.dept='';
+      this.applyStatus(sm.id,'unassigned',{reopenReason:sm.reopenReason});
+    }
+    else {
+      const task=this.tasks.find(x=>x.id===sm.id);
+      if(!task||!sm.reopenOwner){ this.setState(s=>({statusModal:{...s.statusModal,error:'Please select a task owner or No owner.'}})); return; }
+      if(sm.reopenOwner==='__no_owner__'){
+        task.primary=''; task.primaryOwnerId=''; task.dept='';
+        this.applyStatus(sm.id,'unassigned',{reopenReason:sm.reopenReason});
+      } else {
+        const owner=this.EMPLOYEES.find(e=>e.name===sm.reopenOwner);
+        if(!owner){ this.setState(s=>({statusModal:{...s.statusModal,error:'Please select a valid task owner.'}})); return; }
+        task.primary=owner.name; task.primaryOwnerId=owner.id; task.dept=owner.department||owner.dept||'';
+        this.applyStatus(sm.id,sm.target==='unassigned'?'not_started':sm.target,{reopenReason:sm.reopenReason});
+      }
+    } }
   applyDueChange(id,date){
     const t=this.tasks.find(x=>x.id===id); if(!t) return;
     const changed = t.due!==date;
@@ -1818,7 +1853,7 @@ class Component extends DCLogic {
       const inner=(a,b)=>{ switch(st.sort){ case 'start':return (a.start||'').localeCompare(b.start||''); case 'due':return a.due.localeCompare(b.due); case 'revised':return this.effDate(a).localeCompare(this.effDate(b)); case 'status':{const o={blocked:0,in_progress:1,not_started:2,completed:3};return o[a.status]-o[b.status];} case 'priority':{const o={high:0,medium:1,low:2};return o[a.prio]-o[b.prio];} case 'spoc':return a.primary.localeCompare(b.primary); default:return 0; } };
       const sortFn=(a,b)=> ((this.canDrag(b)?1:0)-(this.canDrag(a)?1:0)) || inner(a,b);
 
-      const mkRow=(t)=>{ const m=this.mandate(t.mandateId); const od=this.isOverdue(t); const eff=this.effDate(t); const delta=this.revisedDeltaDays(t); const canInline=this.canManageMandate(t.mandateId)||this.isMine(t); const locked=t.status==='completed';
+      const mkRow=(t)=>{ const m=this.mandate(t.mandateId); const od=this.isOverdue(t); const eff=this.effDate(t); const delta=this.revisedDeltaDays(t); const canInline=this.canChangeTaskStatus(t); const locked=t.status==='completed';
         const canEditDueReal = this.canManageMandate(t.mandateId) && !locked && !(m&&m.closed);
         const canEditRevisedInline = false;
         const canEditDateCell = canEditDueReal;
@@ -2284,14 +2319,20 @@ class Component extends DCLogic {
         const origTask = dw.taskId ? this.tasks.find(x=>x.id===dw.taskId) : null;
         const drawerMandateId=d.mandateId||(origTask&&origTask.mandateId)||st.mandateId;
         const coreEnabled=this.canManageMandate(drawerMandateId);
-        const statusEnabled=!!(origTask&&(this.canManageMandate(origTask.mandateId)||this.isMine(origTask)));
+        const statusEnabled=!!(origTask&&this.canChangeTaskStatus(origTask));
         const statusOnly=!!(origTask&&this.isMine(origTask)&&!coreEnabled);
         V.dCoreReadonly=!coreEnabled; V.dCoreEditable=coreEnabled;
+        V.dTaskOwnerStatusEditable=!coreEnabled&&statusEnabled;
+        V.dTaskOwnerStatusReadonly=!coreEnabled&&!statusEnabled;
         V.drawerShowExternalTag=dw.mode==='edit'&&!!d.external;
         V.dShowExternalInput=dw.mode==='add';
         V.formGridStyle = coreEnabled ? 'display:flex;flex-direction:column;gap:15px' : 'display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:32px;row-gap:18px;align-items:start;padding:0 8px 12px';
         V.ownerDeptRowStyle='display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px;grid-column:1/-1;align-items:start';
-        V.roCategory=d.ws||'—'; V.roName=d.name||'—'; V.roDescVal=(d.desc&&d.desc.trim())?d.desc:'No description added.'; V.roDeptVal=d.dept||'—';
+        V.departmentFieldStyle=coreEnabled?'grid-column:1/-1;max-width:620px;width:100%':'min-width:0;width:100%';
+        const draftPrimaryEmployee=this.EMPLOYEES.find(e=>(d.primaryOwnerId&&e.id===d.primaryOwnerId)||e.name===d.primary);
+        const resolvedDraftDept=d.dept||(draftPrimaryEmployee&&(draftPrimaryEmployee.department||draftPrimaryEmployee.dept))||'';
+        V.roCategory=d.ws||'—'; V.roName=d.name||'—'; V.roDescVal=(d.desc&&d.desc.trim())?d.desc:'No description added.'; V.roDeptVal=resolvedDraftDept||'—';
+        V.roStatusVal=(S[d.status]&&S[d.status].label)||d.status||'—';
         V.roPrioVal=(this.PRIO[d.prio]||{}).label||d.prio; V.roPrioFlames=flames(d.prio); V.roDueVal=this.fmt(d.due)||'—';
         V.roPrimaryVal=d.primary||'Unassigned'; V.roPrimaryInitials=this.initials(d.primary||''); V.roPrimaryColor=this.ownerColors[d.primary]||'var(--gray-dark)';
         V.roHasSubs=(d.subs||[]).filter(s=>s&&s.name&&s.name.trim()).length>0; V.roSubs=(d.subs||[]).filter(s=>s&&s.name&&s.name.trim()).map(s=>({name:s.name, owner:s.owner||'Unassigned'}));
@@ -2306,6 +2347,7 @@ class Component extends DCLogic {
         V.dReasonStyle = 'width:100%;min-height:60px;border:1px solid #E0D3AE;border-radius:10px;padding:9px 11px;font-size:13px;font-family:inherit;outline:0;resize:vertical;background:#fff';
         // role-based field permissions
         const remarkEnabled = coreEnabled || statusEnabled;
+        V.showRemarkField=remarkEnabled;
         V.dCoreDisabled=!coreEnabled;
         V.dCoreHelp = statusEnabled?'As the task owner, you can update status and provide a revised date.':'You can view this task, but only its mandate P&L owner or TL can edit details.';
         V.dStatusDisabled=!statusEnabled; V.dRemarkDisabled=!remarkEnabled; V.dRevisedDisabled=!revisedEnabled;
@@ -2330,8 +2372,10 @@ class Component extends DCLogic {
         V.dueMissing=validateRequired&&coreEnabled&&!String(d.due||'').trim();
         V.statusMissing=validateRequired&&(dw.mode==='add'||statusEnabled)&&!String(d.status||'').trim();
         V.priorityMissing=validateRequired&&coreEnabled&&!String(d.prio||'').trim();
-        V.ownerMissing=validateRequired&&coreEnabled&&!String(d.primary||'').trim();
-        V.remarkMissing=validateRequired&&((statusOnly&&V.dRevisedChanged)||d.status==='blocked')&&!String(d.remark||'').trim();
+        V.ownerRequired=d.status!=='unassigned';
+        V.ownerMissing=validateRequired&&coreEnabled&&V.ownerRequired&&!String(d.primary||'').trim();
+        V.remarkRequired=(statusOnly&&V.dRevisedChanged)||d.status==='blocked';
+        V.remarkMissing=validateRequired&&V.remarkRequired&&!String(d.remark||'').trim();
         V.taskInputStyle=V.taskMissing?V.dInputStyle+';border-color:var(--red);box-shadow:0 0 0 1px var(--red)':V.dInputStyle;
         V.dCompany = d.external?'external':'internal'; V.dExternal=!!d.external; V.setExternal=e=>this.setD('external',!!e.target.checked); V.setCompanyV=v=>this.setD('external', v==='external');
         V.typeNode=React.createElement('label',{style:{height:46,display:'flex',alignItems:'center',gap:9,fontSize:14,color:'#101721',cursor:'pointer'}},
@@ -2344,11 +2388,11 @@ class Component extends DCLogic {
         V.dBlockerOwner=d.blockerOwner||'';
         V.blockerOwnerOptions=this.EMPLOYEES.map(e=>({value:e.id,label:e.name}));
         V.onBlockerOwnerChange=e=>{ const id=e.target.value, employee=this.EMPLOYEES.find(item=>item.id===id); this.setState(s=>({draft:{...s.draft,blockerOwnerId:id,blockerOwner:employee?employee.name:'',error:''}})); };
-        V.dDept=d.dept||''; V.setDeptSelect=e=>this.setD('dept',e.target.value);
-        V.setWv=v=>dw.mode==='add'?this.setCategoryValue(v):this.setD('ws',v); V.setPrimaryV=v=>this.setPrimaryAndDepartment(v); V.setDeptV=v=>this.setD('dept',v); V.setStatusV=v=>this.setD('status',v); V.setPrioV=v=>this.setD('prio',v);
-        V.newCategoryOpen=dw.mode==='add'&&!!d.newCategoryOpen;
+        V.dDept=resolvedDraftDept; V.setDeptSelect=e=>this.setD('dept',e.target.value);
+        V.setWv=v=>this.setCategoryValue(v); V.setPrimaryV=v=>this.setPrimaryAndDepartment(v); V.setDeptV=v=>this.setD('dept',v); V.setStatusV=v=>this.setD('status',v); V.setPrioV=v=>this.setD('prio',v);
+        V.newCategoryOpen=coreEnabled&&!!d.newCategoryOpen;
         if(V.newCategoryOpen) V.dWs='__new_category_active__';
-        V.wsDDOptions=(V.newCategoryOpen?[{value:'__new_category_active__',label:'New Category'}]:[]).concat(this.categoryNames().map(w=>({value:w,label:w}))).concat(dw.mode==='add'?[{value:'__add_new_category__',label:'+ Add new Category'}]:[]);
+        V.wsDDOptions=(V.newCategoryOpen?[{value:'__new_category_active__',label:'New Category'}]:[]).concat(this.categoryNames().map(w=>({value:w,label:w}))).concat(coreEnabled?[{value:'__add_new_category__',label:'+ Add new Category'}]:[]);
         V.newCategoryName=d.newCategoryName||'';
         V.newCategoryError=d.newCategoryError||'';
         V.hasNewCategoryError=!!V.newCategoryError;
@@ -2504,20 +2548,23 @@ class Component extends DCLogic {
     const sm=st.statusModal;
     V.smOpen=!!sm;
     if(sm){ const t=this.tasks.find(x=>x.id===sm.id)||{};
-      V.smKind=sm.kind; V.smIsComplete=sm.kind==='complete'; V.smIsBlock=sm.kind==='block'; V.smIsReopen=sm.kind==='reopen'; V.smIsRevise=sm.kind==='revise'; V.smIsDue=sm.kind==='due';
+      V.smKind=sm.kind; V.smIsComplete=sm.kind==='complete'; V.smIsBlock=sm.kind==='block'; V.smIsReopen=sm.kind==='reopen'; V.smIsUnassign=sm.kind==='unassign'; V.smIsRevise=sm.kind==='revise'; V.smIsDue=sm.kind==='due';
       V.smTaskName=t.name;
-      V.smTitle= sm.kind==='complete'?'Mark task as completed?' : sm.kind==='block'?'Mark task as blocked?' : sm.kind==='revise'?'Set a revised date?' : sm.kind==='due'?'Change due date?' : 'Reopen this task?';
-      V.smTargetLabel= sm.target?S[sm.target].label:'';
+      V.smTitle= sm.kind==='complete'?'Mark task as completed?' : sm.kind==='block'?'Mark task as blocked?' : sm.kind==='unassign'?'Move to unassigned?' : sm.kind==='revise'?'Set a revised date?' : sm.kind==='due'?'Change due date?' : 'Reopen this task?';
+      const smDisplayTarget=sm.kind==='reopen'&&sm.target==='unassigned'&&sm.reopenOwner!=='__no_owner__'?'not_started':sm.target;
+      V.smTargetLabel= smDisplayTarget?S[smDisplayTarget].label:'';
+      V.smSourceLabel=(S[t.status]&&S[t.status].label)||t.status||'';
       V.smDueLabel=this.fmt(t.due); V.smDate=sm.date; V.smReviseReason=sm.reviseReason;
       V.onSMDate=(e)=>this.setSM('date',e.target.value);
       V.onSMReviseReason=(e)=>this.setSM('reviseReason',e.target.value);
-      V.smClosing=sm.closingRemark; V.smBlockerReason=sm.blockerReason; V.smBlockerOwner=sm.blockerOwner; V.smReopen=sm.reopenReason;
+      V.smClosing=sm.closingRemark; V.smBlockerReason=sm.blockerReason; V.smBlockerOwner=sm.blockerOwner; V.smReopen=sm.reopenReason; V.smReopenOwner=sm.reopenOwner||'';
       V.onSMClosing=(e)=>this.setSM('closingRemark',e.target.value);
       V.onSMBlockerReason=(e)=>this.setSM('blockerReason',e.target.value);
       V.onSMBlockerOwner=(e)=>this.setSM('blockerOwner',e.target.value);
       V.onSMReopen=(e)=>this.setSM('reopenReason',e.target.value);
+      V.onSMReopenOwner=(value)=>this.setSM('reopenOwner',value);
       V.smError=!!sm.error; V.smErrorMsg=sm.error;
-      V.smClosingMissing=V.smError&&V.smIsComplete&&!String(sm.closingRemark||'').trim();
+      V.smClosingMissing=false;
       V.smBlockerReasonMissing=V.smError&&V.smIsBlock&&!String(sm.blockerReason||'').trim();
       V.smDateMissing=V.smError&&(V.smIsRevise||V.smIsDue)&&!String(sm.date||'').trim();
       V.smReviseReasonMissing=V.smError&&V.smIsRevise&&!String(sm.reviseReason||'').trim();
@@ -2526,10 +2573,11 @@ class Component extends DCLogic {
       V.smBlockerReasonStyle='width:100%;min-height:60px;border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;outline:0;resize:vertical;margin-bottom:12px;'+smInvalid(V.smBlockerReasonMissing);
       V.smDateStyle='width:100%;height:38px;border-radius:10px;padding:0 11px;font-size:13px;font-family:inherit;outline:0;background:#fff;'+smInvalid(V.smDateMissing);
       V.smReviseReasonStyle='width:100%;min-height:60px;border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;outline:0;resize:vertical;'+smInvalid(V.smReviseReasonMissing);
-      V.smCta= sm.kind==='complete'?'Mark as Completed' : sm.kind==='block'?'Mark as Blocked' : sm.kind==='revise'?'Save Revised Date' : sm.kind==='due'?'Save Due Date' : 'Reopen Task';
+      V.smCta= sm.kind==='complete'?'Mark as Completed' : sm.kind==='block'?'Mark as Blocked' : sm.kind==='unassign'?'Move to Unassigned' : sm.kind==='revise'?'Save Revised Date' : sm.kind==='due'?'Save Due Date' : 'Reopen Task';
       V.smCtaStyle= 'flex:1;height:40px;border:0;color:#fff;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;background:'
         + (sm.kind==='block' ? 'var(--red)' : sm.kind==='complete' ? 'var(--emerald)' : sm.kind==='revise' ? '#c98a12' : 'var(--violet)');
       V.smOwnerOptions=this.OWNERS;
+      V.smReopenOwnerOptions=[{value:'__no_owner__',label:'No owner'}].concat(this.eligibleOwners().map(e=>({value:e.name,label:e.name})));
       V.onConfirmSM=()=>this.confirmSM(); V.onCancelSM=()=>this.cancelSM();
     }
     const ua=st.unassignedAssign;
