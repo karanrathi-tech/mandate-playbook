@@ -829,11 +829,19 @@ class Component extends DCLogic {
   openNudge(id){ this.setState({nudge:{taskId:id, msg:''}}); }
   closeNudge(){ this.setState({nudge:null}); }
   setNudgeMsg(v){ this.setState(s=>({nudge:{...s.nudge, msg:v}})); }
-  sendNudge(){ const n=this.state.nudge; if(!n) return; const t=this.tasks.find(x=>x.id===n.taskId); if(!t) return;
-    this.toast('Reminder sent to '+t.primary,'success'); this.setState({nudge:null}); }
-  sendDrawerNudge(id,remark){ const t=this.tasks.find(x=>x.id===id); if(!t) return;
+  async sendAutomaticWhatsAppNudge(t,customMessage){
+    const response=await fetch('/api/notifications/whatsapp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ownerName:t.primary||'Task owner',taskName:t.name,dueDate:this.fmt(this.effDate(t)),message:(customMessage||'').trim()})});
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(result.error||'WhatsApp delivery failed.');
+    return result;
+  }
+  async sendNudge(){ const n=this.state.nudge; if(!n) return; const t=this.tasks.find(x=>x.id===n.taskId); if(!t) return;
+    try{ const result=await this.sendAutomaticWhatsAppNudge(t,n.msg); const delivered=['delivered','read'].includes(String(result.status||'').toLowerCase()); this.toast(delivered?'WhatsApp message delivered to '+t.primary:'WhatsApp message queued for '+t.primary,delivered?'success':'default'); this.setState({nudge:null}); }
+    catch(error){ this.toast(error&&error.message?error.message:'WhatsApp delivery failed.','error'); } }
+  async sendDrawerNudge(id,remark){ const t=this.tasks.find(x=>x.id===id); if(!t) return;
     if(!remark||!remark.trim()){ this.setState(s=>({draft:{...s.draft, error:'Add a remark before nudging.'}})); return; }
-    this.toast('Reminder sent to '+t.primary,'success'); }
+    try{ const result=await this.sendAutomaticWhatsAppNudge(t,remark); const delivered=['delivered','read'].includes(String(result.status||'').toLowerCase()); this.toast(delivered?'WhatsApp message delivered to '+t.primary:'WhatsApp message queued for '+t.primary,delivered?'success':'default'); }
+    catch(error){ this.toast(error&&error.message?error.message:'WhatsApp delivery failed.','error'); } }
   confirmTransfer(){ const tr=this.state.transfer; if(!tr||!tr.pickedId) return;
     const t=this.tasks.find(x=>x.id===tr.taskId); const emp=this.EMPLOYEES.find(e=>e.id===tr.pickedId);
     if(t&&emp && !this.ownerColors[emp.name]) this.ownerColors[emp.name]='var(--gray-dark)';
