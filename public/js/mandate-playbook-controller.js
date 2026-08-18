@@ -1973,13 +1973,15 @@ class Component extends DCLogic {
 
       V.clSearch=st.clSearch; V.onClSearch=e=>this.setState({clSearch:e.target.value}); V.onClSearchV=v=>this.setState({clSearch:v});
       V.clSearchPlaceholder=isDirect?'Search tasks across mandates':'Search tasks in this playbook';
-      V.sortValue=st.sort; V.onSort=e=>this.setState({sort:e.target.value});
-      V.sortOptions=[{value:'start',label:'Start date'},{value:'due',label:'Due date'},{value:'revised',label:'Revised date'},{value:'status',label:'Status'},{value:'priority',label:'Priority'},{value:'spoc',label:'SPOC / Owner'},{value:'workstream',label:'Workstream'}];
+      const allowedTaskSorts=['start','due','priority'];
+      const activeTaskSort=allowedTaskSorts.includes(st.sort)?st.sort:'start';
+      V.sortValue=activeTaskSort; V.onSort=e=>this.setState({sort:e.target.value});
+      V.sortOptions=[{value:'start',label:'Start date'},{value:'due',label:'Due date'},{value:'priority',label:'Priority'}];
       V.clSortOpen=!!st.clSortOpen;
       V.onToggleClSort=(e)=>{ try{e.stopPropagation();}catch(_){}; this.setState(s=>({clSortOpen:!s.clSortOpen})); };
       V.onCloseClSort=(e)=>{ try{e.stopPropagation();}catch(_){}; this.setState({clSortOpen:false}); };
       V.clSortBtnStyle='display:flex;align-items:center;justify-content:center;height:38px;width:38px;flex:none;background:'+(st.clSortOpen?'#F0F0FF':'#fff')+';border:1px solid '+(st.clSortOpen?'var(--violet)':'#E0E0E0')+';border-radius:10px;color:'+(st.clSortOpen?'var(--violet)':'rgba(16,23,33,.94)')+';cursor:pointer;font-family:inherit';
-      V.clSortMenu=V.sortOptions.map(o=>{ const active=o.value===st.sort;
+      V.clSortMenu=V.sortOptions.map(o=>{ const active=o.value===activeTaskSort;
         return { label:o.label, active,
           rowStyle:'width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;border:0;background:'+(active?'#F4F4FF':'transparent')+';padding:8px 10px;border-radius:7px;font-size:12.5px;font-weight:'+(active?'600':'500')+';color:rgba(16,23,33,.94);cursor:pointer;font-family:inherit',
           checkStyle:'display:'+(active?'flex':'none')+';align-items:center;color:var(--violet)',
@@ -2028,7 +2030,7 @@ class Component extends DCLogic {
       const q=st.clSearch.toLowerCase();
       let filtered=all.filter(_matchesActiveFilters);
 
-      const inner=(a,b)=>{ switch(st.sort){ case 'start':return (a.start||'').localeCompare(b.start||''); case 'due':return a.due.localeCompare(b.due); case 'revised':return this.effDate(a).localeCompare(this.effDate(b)); case 'status':{const o={blocked:0,in_progress:1,not_started:2,completed:3};return o[a.status]-o[b.status];} case 'priority':{const o={high:0,medium:1,low:2};return o[a.prio]-o[b.prio];} case 'spoc':return a.primary.localeCompare(b.primary); default:return 0; } };
+      const inner=(a,b)=>{ switch(activeTaskSort){ case 'start':return (a.start||'').localeCompare(b.start||''); case 'due':return a.due.localeCompare(b.due); case 'priority':{const o={high:0,medium:1,low:2};return o[a.prio]-o[b.prio];} default:return 0; } };
       const sortFn=(a,b)=> ((this.canDrag(b)?1:0)-(this.canDrag(a)?1:0)) || inner(a,b);
 
       const mkRow=(t)=>{ const m=this.mandate(t.mandateId); const od=this.isOverdue(t); const eff=this.effDate(t); const delta=this.revisedDeltaDays(t); const canInline=this.canChangeTaskStatus(t); const locked=t.status==='completed';
@@ -2235,7 +2237,7 @@ class Component extends DCLogic {
         V.ganttColHandleBarStyle=`width:3px;height:16px;border-radius:2px;background:${st.ganttResizeCol?'#6161FF':'#C6C6EE'}`;
         V.onGanttColResizeDown=(e)=>this.startGanttColResize(e);
       }
-      V.colOptions=[['ws','Workstream'],['stage','Stage'],['start','Start date'],['owner','Task Owner'],['company','Company'],['support','Supporting'],['due','Due date'],['status','Status'],['prio','Priority'],['remark','Latest remark']].map(c=>({key:c[0],label:c[1],checked:cv(c[0]),onToggle:()=>this.toggleListCol(c[0])}));
+      V.colOptions=[['ws','Category'],['start','Start date'],['owner','Task Owner'],['due','Due date'],['status','Status'],['prio','Priority'],['remark','Latest remark']].map(c=>({key:c[0],label:c[1],checked:cv(c[0]),onToggle:()=>this.toggleListCol(c[0])}));
       V.checklistZeroTasks = (V.clListView||V.clGanttView) && hasCl && all.length===0;
       V.noResults = (V.clListView||V.clGanttView) && hasCl && all.length>0 && groups.length===0;
       V.allMandatesHeading = isDirect ? 'All Mandates Task ('+filtered.length+')' : '';
@@ -2312,7 +2314,7 @@ class Component extends DCLogic {
           const MO=this._moveOrder||{};
           const ctasks=subset.filter(t=>t.status===key).sort((a,b)=>((MO[b.id]||0)-(MO[a.id]||0)) || ((this.canDrag(b)?1:0)-(this.canDrag(a)?1:0)));
           const hi = overS===fullKey && !!dragId;
-          const infoTexts={unassigned:'No Task Owner / SPOC has been assigned yet. Assign an owner before moving this task forward.', not_started:'Task is created and assigned, but work hasn\'t started.', in_progress:'Task is actively being worked on by the owner.', blocked:'Task is stuck — something outside the owner\'s control is stopping progress.', completed:'Task is done and closed.'};
+          const infoTexts={unassigned:'No Task Owner has been assigned yet. Assign an owner before moving this task forward.', not_started:'Task is created and assigned, but work hasn\'t started.', in_progress:'Task is actively being worked on by the owner.', blocked:'Task is stuck — something outside the owner\'s control is stopping progress.', completed:'Task is done and closed.'};
           return { key, label:(key==='completed'?'Completed':key==='in_progress'?'In-Progress':S[key].label), count:ctasks.length, empty:ctasks.length===0, showDrop: ctasks.length===0 && !!dragId,
             infoOpen: st.colInfoOpen===fullKey, infoText: infoTexts[key]||'', onInfoToggle:(e)=>{ try{e.stopPropagation();}catch(_){}; this.setState(s=>({colInfoOpen: s.colInfoOpen===fullKey?null:fullKey})); }, onInfoStop:(e)=>{ try{e.stopPropagation();}catch(_){}; },
             style:colWrapStyle(hi,key), dropStyle:`border:1.5px dashed ${dropEdge[key]||'#8f8ff0'};border-radius:10px;padding:18px 10px;text-align:center;font-size:11.5px;font-weight:600;color:${dropEdge[key]||'#7a7ad0'};background:${dropTint[key]||'#F4F4FF'}`, bodyStyle:colBodyStyle,
@@ -2326,10 +2328,10 @@ class Component extends DCLogic {
         return statusCols;
       };
       // group-by → swimlanes
-      const groupBy=st.boardGroup||'none';
+      const groupBy=['none','mandate','workstream','priority'].includes(st.boardGroup)?st.boardGroup:'none';
       V.boardNoGroupHeading = (groupBy==='none') ? (isDirect?'All Mandates Task ('+filtered.length+')':'') : '';
       V.boardGroup=groupBy; V.onBoardGroup=(e)=>this.setBoardGroup(e.target.value); V.onBoardGroupV=(v)=>this.setBoardGroup(v); V.boardGroupTinted=groupBy!=='none';
-      V.boardGroupOptions=[{value:'none',label:'Group By: None'},{value:'mandate',label:'Group By: Mandate'},{value:'workstream',label:'Group By: Workstream'},{value:'owner',label:'Group By: Owner / SPOC'},{value:'priority',label:'Group By: Priority'}];
+      V.boardGroupOptions=[{value:'none',label:'Group By: None'},{value:'mandate',label:'Group By: Mandate'},{value:'workstream',label:'Group By: Category'},{value:'priority',label:'Group By: Priority'}];
       let lanes;
       if(groupBy==='mandate'){
         let mSource=filtered;
@@ -2687,7 +2689,7 @@ class Component extends DCLogic {
     // ================= NUDGE MODAL (Mini) =================
     const ng=st.nudge; V.nudgeOpen=!!ng;
     if(ng){ const t=this.tasks.find(x=>x.id===ng.taskId)||{}; V.nudgeOwnerName=t.primary||'Owner'; V.nudgeMsg=ng.msg||''; V.onNudgeMsg=(e)=>this.setNudgeMsg(e.target.value); V.onCloseNudge=()=>this.closeNudge(); V.onSendNudge=()=>this.sendNudge(); }
-    // ================= TRANSFER OWNER / SPOC MODAL (Mini) =================
+    // ================= TRANSFER TASK OWNER MODAL (Mini) =================
     const tr=st.transfer;
     V.transferOpen=!!tr;
     if(tr){
