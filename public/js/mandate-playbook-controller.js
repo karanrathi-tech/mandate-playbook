@@ -47,7 +47,8 @@ class Component extends DCLogic {
       userId:null, view:'direct', mandateId:null,
       landingSearch:'', landingFilter:'all', fLaunch:'all', fOwner:'all', fType:'all', landingView:'grid', tasksOnlyFilter:true, directSel:null, directOpen:false,
       mSortKey:'none', mSortOpen:false,
-      clSearch:'', fDue:'all', fStatus:'all', fPrio:'all', fMine:false, sort:'start', collapsed:{}, clView:'board', dueHoverId:null, rowHoverId:null, selTasks:{},
+      clSearch:'', fDue:'all', fStatus:'all', fPrio:'all', fTaskType:'all', fRevisionStatus:'all', fMine:false, sort:'start', collapsed:{}, clView:'board', dueHoverId:null, rowHoverId:null, selTasks:{},
+      moreFiltersOpen:false, moreStatus:'all', moreTaskType:'all', moreRevisionStatus:'all',
       analyticsOpen:false, fTaskWs:'all', fTaskOwner:'all', fOwnerOverdueOnly:false, fOverdueRange:'all', fBlockedRange:'all', fRevisedRange:'all', overdueOwnersOpen:false, overdueOwnersSearch:'', unassignedDepartmentsOpen:false, unassignedDepartmentsSearch:'',
       drawer:null, // {mode:'view'|'add'|'edit', taskId}
       drawerTab:'details', addStep:1,
@@ -160,8 +161,8 @@ class Component extends DCLogic {
     clearTimeout(this._nct);
     this._nct=setTimeout(()=>{ this._navClosing=false; this.setState({navDrawerOpen:false, navDrawerClosing:false}); }, 230);
   }
-  openMandate(id){ const m=this.mandate(id); this.setState({view:'checklist', mandateId:id, drawer:null, modal:null, clSearch:'', fDue:'all', fStatus:'all', fPrio:'all', fMine:false, collapsed:{}, dueEdit:null}); }
-  openDirect(){ this.setState({view:'direct', mandateId:null, drawer:null, modal:null, clSearch:'', fDue:'all', fStatus:'all', fPrio:'all', fMine:false, collapsed:{}, dueEdit:null, directSel:null, directOpen:false, selTasks:{}}); }
+  openMandate(id){ const m=this.mandate(id); this.setState({view:'checklist', mandateId:id, drawer:null, modal:null, clSearch:'', fDue:'all', fStatus:'all', fPrio:'all', fTaskType:'all', fRevisionStatus:'all', fMine:false, collapsed:{}, dueEdit:null}); }
+  openDirect(){ this.setState({view:'direct', mandateId:null, drawer:null, modal:null, clSearch:'', fDue:'all', fStatus:'all', fPrio:'all', fTaskType:'all', fRevisionStatus:'all', fMine:false, collapsed:{}, dueEdit:null, directSel:null, directOpen:false, selTasks:{}}); }
   toggleDirectMandate(id){ const r=this.role(), rn=this.roleName(); const scope=this.scopedMandates(r,rn);
     let sel=this.state.directSel; if(!sel){ sel={}; scope.forEach(m=>sel[m.id]=true); } else sel={...sel};
     sel[id]=!sel[id];
@@ -1623,6 +1624,10 @@ class Component extends DCLogic {
         if(ignore!=='due'&&st.fDue==='week'&&!(this.dueBucket(t)==='week'||this.dueBucket(t)==='today')) return false;
         if(ignore!=='status'&&st.fStatus!=='all'&&t.status!==st.fStatus) return false;
         if(st.fPrio!=='all'&&t.prio!==st.fPrio) return false;
+        if(st.fTaskType==='external'&&!t.external) return false;
+        if(st.fTaskType==='internal'&&t.external) return false;
+        if(st.fRevisionStatus==='with'&&!t.revised) return false;
+        if(st.fRevisionStatus==='without'&&t.revised) return false;
         if(st.fMine&&!this.isMine(t)) return false;
         if(ignore!=='workstream'&&st.fTaskWs!=='all'&&t.ws!==st.fTaskWs) return false;
         if(ignore!=='owner'&&st.fTaskOwner!=='all'){
@@ -2005,6 +2010,20 @@ class Component extends DCLogic {
       V.dueOptions=[{value:'all',label:'Due: All'},{value:'overdue',label:'Overdue'},{value:'today',label:'Due Today'},{value:'week',label:'Due This Week'}];
       V.prioOptions=[{value:'all',label:'Priority: All'},{value:'high',label:'High'},{value:'medium',label:'Medium'},{value:'low',label:'Low'}];
       V.statusOptionsFilter=[{value:'all',label:'Status: All'},{value:'unassigned',label:'Unassigned'},{value:'not_started',label:'Pending'},{value:'in_progress',label:'In Progress'},{value:'blocked',label:'Blocked'},{value:'completed',label:'Completed'}];
+      const moreChoiceStyle=(active)=>'width:100%;height:38px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border:1px solid '+(active?'var(--violet)':'#E0E0E0')+';border-radius:8px;background:'+(active?'#F4F4FF':'#fff')+';color:'+(active?'var(--violet)':'rgba(16,23,33,.94)')+';font:500 12.5px/1 Graphik,Inter,system-ui,sans-serif;cursor:pointer;text-align:left';
+      const moreRows=(items,value,key)=>items.map(o=>({label:o.label,value:o.value,rowStyle:moreChoiceStyle(value===o.value),check:value===o.value?'✓':'',onPick:()=>this.setState({[key]:o.value})}));
+      V.moreFiltersOpen=!!st.moreFiltersOpen;
+      V.moreFiltersActiveCount=(st.fStatus!=='all'?1:0)+(st.fTaskType!=='all'?1:0)+(st.fRevisionStatus!=='all'?1:0);
+      V.moreFiltersBadge=V.moreFiltersActiveCount?String(V.moreFiltersActiveCount):'';
+      V.moreFiltersHasBadge=V.moreFiltersActiveCount>0;
+      V.moreFiltersBtnStyle='height:38px;padding:0 14px;display:inline-flex;align-items:center;gap:8px;flex:none;border:1px solid '+(V.moreFiltersActiveCount?'var(--violet)':'#E0E0E0')+';border-radius:10px;background:'+(V.moreFiltersActiveCount?'#F4F4FF':'#fff')+';color:var(--violet);font:600 12.5px/1 Graphik,Inter,system-ui,sans-serif;cursor:pointer;white-space:nowrap';
+      V.onOpenMoreFilters=()=>this.setState({moreFiltersOpen:true,moreStatus:st.fStatus,moreTaskType:st.fTaskType||'all',moreRevisionStatus:st.fRevisionStatus||'all'});
+      V.onCloseMoreFilters=()=>this.setState({moreFiltersOpen:false});
+      V.moreStatusRows=moreRows([{value:'all',label:'All statuses'},{value:'unassigned',label:'Unassigned'},{value:'not_started',label:'Pending'},{value:'in_progress',label:'In Progress'},{value:'blocked',label:'Blocked'},{value:'completed',label:'Completed'}],st.moreStatus,'moreStatus');
+      V.moreTaskTypeRows=moreRows([{value:'all',label:'All task types'},{value:'internal',label:'Internal'},{value:'external',label:'External'}],st.moreTaskType,'moreTaskType');
+      V.moreRevisionRows=moreRows([{value:'all',label:'All revision statuses'},{value:'with',label:'Tasks with revision'},{value:'without',label:'Tasks with no revision'}],st.moreRevisionStatus,'moreRevisionStatus');
+      V.onClearMoreFilters=()=>this.setState({moreStatus:'all',moreTaskType:'all',moreRevisionStatus:'all'});
+      V.onApplyMoreFilters=()=>this.setState(s=>({moreFiltersOpen:false,fStatus:s.moreStatus,fTaskType:s.moreTaskType,fRevisionStatus:s.moreRevisionStatus,fBlockedRange:s.moreStatus==='blocked'?s.fBlockedRange:'all'}));
 
       const q=st.clSearch.toLowerCase();
       let filtered=all.filter(_matchesActiveFilters);
@@ -2220,7 +2239,7 @@ class Component extends DCLogic {
       V.checklistZeroTasks = (V.clListView||V.clGanttView) && hasCl && all.length===0;
       V.noResults = (V.clListView||V.clGanttView) && hasCl && all.length>0 && groups.length===0;
       V.allMandatesHeading = isDirect ? 'All Mandates Task ('+filtered.length+')' : '';
-      V.onClearFilters=()=>this.setState({fDue:'all',fStatus:'all',fPrio:'all',fMine:false,clSearch:'',fTaskWs:'all',fTaskOwner:'all',fOwnerOverdueOnly:false,fOverdueRange:'all',fBlockedRange:'all',fRevisedRange:'all'});
+      V.onClearFilters=()=>this.setState({fDue:'all',fStatus:'all',fPrio:'all',fTaskType:'all',fRevisionStatus:'all',fMine:false,clSearch:'',fTaskWs:'all',fTaskOwner:'all',fOwnerOverdueOnly:false,fOverdueRange:'all',fBlockedRange:'all',fRevisedRange:'all'});
 
       // ---- kanban board ----
       const ro = m?!!m.closed:false;
