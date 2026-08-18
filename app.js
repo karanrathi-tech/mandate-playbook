@@ -83,7 +83,7 @@ const statusMeta = {
   pending: { label: "Pending", className: "pending" },
   in_progress: { label: "In progress", className: "progress" },
   blocked: { label: "Blocked", className: "blocked" },
-  done: { label: "Done", className: "done" },
+  done: { label: "Completed", className: "done" },
 };
 
 const workstreams = ["Mandate Setup", "Product & Pricing", "Compliance", "Marketing", "Technology", "Sales Readiness", "Channel", "Reporting & Governance"];
@@ -203,7 +203,7 @@ function cardTemplate(mandate) {
         <strong>${mandate.progress}%</strong>
       </div>
       <div class="task-stats">
-        ${stat("Total Tasks", mandate.total)}${stat("Done", mandate.done)}
+        ${stat("Total Tasks", mandate.total)}${stat("Completed", mandate.done)}
         ${stat("WIP", mandate.wip)}${stat("Blocked", mandate.blocked)}${stat("Pending", mandate.pending)}
       </div>`
     : `<div class="progress-row" aria-label="Checklist not created">

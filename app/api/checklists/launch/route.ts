@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   }
   if (mandate.hasChecklist) {
     return Response.json(
-      { error: "This mandate already has a checklist." },
+      { error: "This mandate already has a playbook." },
       { status: 409 },
     );
   }

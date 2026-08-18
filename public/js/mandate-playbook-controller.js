@@ -10,12 +10,12 @@ class Component extends DCLogic {
       not_started:{label:'Pending', bg:'#EFEFEF', fg:'#6b6b6b', accent:'#b0b0b0'},
       in_progress:{label:'In Progress', bg:'#E7F0FE', fg:'#2f6fdb', accent:'#2f6fdb'},
       blocked:{label:'Blocked', bg:'var(--red-light)', fg:'var(--red)', accent:'var(--red)'},
-      completed:{label:'Done', bg:'var(--emerald-light)', fg:'var(--emerald)', accent:'var(--emerald)'}
+      completed:{label:'Completed', bg:'var(--emerald-light)', fg:'var(--emerald)', accent:'var(--emerald)'}
     };
     this.PRIO = { high:{label:'High', bg:'var(--red-light)', fg:'var(--red)'}, medium:{label:'Medium', bg:'var(--yellow-light)', fg:'#b0810f'}, low:{label:'Low', bg:'#EFEFEF', fg:'var(--gray)'} };
     this.ROLES = {
       pnl:{label:'P&L Head', role:'pnl', scope:'monitors the full portfolio'},
-      lead:{label:'Team Lead', role:'lead', scope:'owns checklist execution'},
+      lead:{label:'Team Lead', role:'lead', scope:'owns playbook execution'},
       bsm:{label:'BSM Member', role:'bsm', scope:'updates assigned tasks'},
       viewer:{label:'Viewer', role:'viewer', scope:'can view all tasks'}
     };
@@ -239,7 +239,7 @@ class Component extends DCLogic {
   setDrawerTab(t){ this.setState({drawerTab:t}); }
   taskTimeline(t){ if(!t) return [];
     const ev=[]; const who=t.primary||'Team Lead';
-    ev.push({type:'created', title:'Task created', by:(t.ws==='Management'?'Arindom D':'Team Lead'), when:this.fmt(t.start)+' · 09:30 am', note:'Added to the launch checklist under '+t.ws+'.', dot:'var(--violet)'});
+    ev.push({type:'created', title:'Task created', by:(t.ws==='Management'?'Arindom D':'Team Lead'), when:this.fmt(t.start)+' · 09:30 am', note:'Added to the launch playbook under '+t.ws+'.', dot:'var(--violet)'});
     const originalDue=(Array.isArray(t.dueChanges)&&t.dueChanges.length&&t.dueChanges[0].from)||t.due;
     ev.push({type:'due', title:'Due date set', by:'Team Lead', when:this.fmt(t.start)+' · 09:31 am', note:'Target: '+this.fmt(originalDue), dot:'#2f6fdb'});
     if(t.status==='in_progress'||t.status==='completed'||t.status==='blocked') ev.push({type:'status', title:'Status → In Progress', by:who, when:this.fmt(t.start)+' · 02:15 pm', note:'Work started.', dot:'#2f6fdb'});
@@ -450,13 +450,13 @@ class Component extends DCLogic {
   clwPrimary(){
     const w=this.state.clw; if(!w) return;
     if(w.step===1){ if(!w.mandateId){ this.toast('Select a mandate to continue','error'); return; } this.setState(s=>({clw:{...s.clw, step:2}})); return; }
-    if(w.step===2){ if(!w.method){ this.toast('Choose how to start the checklist','error'); return; }
+    if(w.step===2){ if(!w.method){ this.toast('Choose how to start the playbook','error'); return; }
       if(w.method==='standard'){ const tpl=this.stdTemplateTasks(); this.setState({mandateId:w.mandateId, modal:null, clw:null, stdModal:{cat:'All', sel:tpl.map(()=>true)}, stdEnter:true}); return; }
       this.setState(s=>({clw:{...s.clw, step:3}})); return; }
     // step 3 — commit (blank only; standard routes to the template-review modal)
     const id=w.mandateId, m=this.mandate(id); if(!m) return; m.hasChecklist=true;
     this.setState({modal:null, clw:null, view:'checklist', mandateId:id});
-    this.toast('Blank checklist created','success');
+    this.toast('Blank playbook created','success');
     setTimeout(()=>this.openAdd(),260);
   }
   createChecklist(kind){
@@ -464,12 +464,12 @@ class Component extends DCLogic {
     if(kind==='standard'){
       let u=0; const mk=(ws,name,stage)=>({id:'ct'+Date.now()+(u++), mandateId:id, ws, name, stage, status:'not_started', prio:'medium', due:'2026-08-01', revised:'', primary:m.teamLead, supporting:[], external:false, desc:'', remark:''});
       [['Management','Kickoff & governance setup','Kickoff'],['PR','Press note draft','Draft'],['Digital Marketing','Landing page go-live','Build'],['Site Requirements','Site branding installation','Execution'],['Marketing','Brochure final cut','Final Cut'],['Post Sales','CRM process mapping','Mapping'],['Manpower','Sales team deployment','Hiring'],['Training & Pitch','Pitch deck v1','Draft']].forEach(a=>this.tasks.push(mk(a[0],a[1],a[2])));
-      this.toast('Checklist created from template','success');
+      this.toast('Playbook created from template','success');
     } else if(kind==='import'){
       let u=0; const mk=(ws,name,prio,due,primary)=>({id:'ci'+Date.now()+(u++), mandateId:id, ws, name, stage:'', status:'not_started', prio, due, revised:'', primary, supporting:[], external:false, desc:'', remark:'Imported from CSV'});
       [['Management','Kickoff & governance setup','high','2026-07-25',m.teamLead],['PR','Press note draft','medium','2026-08-02','Sneha P'],['Digital Marketing','Landing page go-live','high','2026-08-05','Amit K'],['Site Requirements','Site branding installation','high','2026-08-08','Mihir Shah'],['Marketing','Brochure final cut','medium','2026-08-10','Sneha P'],['Manpower','Sales team deployment','high','2026-08-12',m.teamLead]].forEach(a=>this.tasks.push(mk(a[0],a[1],a[2],a[3],a[4])));
       this.toast('6 tasks imported from CSV','success');
-    } else { this.toast('Blank checklist created','success'); }
+    } else { this.toast('Blank playbook created','success'); }
     this.setState({modal:null, view:'checklist', mandateId:id});
   }
 
@@ -780,7 +780,7 @@ class Component extends DCLogic {
     if(m && m.closed) return false;
     return this.canChangeTaskStatus(t); }
   dragReason(t){ const m=this.mandate(t.mandateId);
-    if(m && m.closed) return 'Mandate is launched — the checklist is locked.';
+    if(m && m.closed) return 'Mandate is launched — the playbook is locked.';
     if(!this.canDrag(t)) return t.primary?'Assigned to '+t.primary+' — only that task owner or the mandate P&L owner/TL can move it.':'This task must be assigned before its status can change.';
     return ''; }
   dragStart(id){ this._justDragged=false; this.setState({dragTaskId:id}); }
@@ -1387,7 +1387,7 @@ class Component extends DCLogic {
     } else if(st.view==='direct'){
       V.pageTitle='All Tasks'; V.pageSub='';
     } else {
-      const m=this.mandate(st.mandateId); V.pageTitle=m?(m.name+'’s Tasks ('+this.mTasks(st.mandateId).length+')'):'Checklist'; V.pageSub='';
+      const m=this.mandate(st.mandateId); V.pageTitle=m?(m.name+'’s Tasks ('+this.mTasks(st.mandateId).length+')'):'Playbook'; V.pageSub='';
     }
 
     // ================= LANDING =================
@@ -1400,7 +1400,7 @@ class Component extends DCLogic {
 
       const banners={
         pnl:'As P&L Head you land on a monitoring view — mandates that are at risk or launching soon are surfaced first. Drill into any mandate to see workstream progress and blocked or overdue tasks. You can edit, but the flow is built for oversight.',
-        lead:'As Team Lead you own execution. Create checklists, add/edit/delete tasks, assign owners, and follow up on overdue items across the mandates you lead.',
+        lead:'As Team Lead you own execution. Create playbooks, add/edit/delete tasks, assign owners, and follow up on overdue items across the mandates you lead.',
         bsm:'You land directly on your tasks, grouped by urgency. Open any task to update its status, add a remark, or set a revised date. You only edit tasks assigned to you.',
         dev:'You see only developer-side tasks assigned to you. Internal owners and remarks are hidden. Update status and add a remark or proof where allowed.'
       };
@@ -1452,7 +1452,7 @@ class Component extends DCLogic {
          icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3z"/><path d="M12 9v4M12 16v.5"/></svg>'},
         {k:'notstarted',label:'Task not Started',sub:'No progress on tasks yet',color:'#6B7785',bg:'#EFEFEF',
          icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>'},
-        {k:'nocreated',label:'Not Created',sub:'checklist pending',color:'#9a6a12',bg:'#FBF3E1',
+        {k:'nocreated',label:'Not Created',sub:'playbook pending',color:'#9a6a12',bg:'#FBF3E1',
          icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/><path d="M12 8v8M8 12h8"/></svg>'},
         {k:'completed',label:'Completed',sub:'fully done',color:'var(--emerald)',bg:'var(--emerald-light)',
          icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>'},
@@ -1466,7 +1466,7 @@ class Component extends DCLogic {
           countStyle:`font-size:22px;font-weight:700;color:${active?d.color:'#101721'};line-height:1`};
       });
 
-      const lfs=[{k:'all',l:'All'},{k:'attention',l:'Needs attention'},{k:'nochecklist',l:'No checklist'}];
+      const lfs=[{k:'all',l:'All'},{k:'attention',l:'Needs attention'},{k:'nochecklist',l:'No playbook'}];
       V.landingFilters=[];
 
       // mandate cards / rows
@@ -1517,13 +1517,13 @@ class Component extends DCLogic {
           segTotal:pr.total,
           cardStyle:'background:#fff;border:1px solid #E0E0E0;border-left:3px solid '+(rk.color||'var(--violet)')+';border-radius:10px;padding:16px 17px;cursor:pointer;position:relative;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease',
           onOpen:()=>this.openMandate(m.id),
-          cta: m.hasChecklist?'Checklist':'Create Checklist',
-          ctaTitle: m.hasChecklist?'View Checklist':'Create Checklist',
+          cta: m.hasChecklist?'Playbook':'Create Playbook',
+          ctaTitle: m.hasChecklist?'View Playbook':'Create Playbook',
           ctaIcon: React.createElement('span',{style:{display:'inline-flex',alignItems:'center',gap:'5px'}},
             React.createElement('span',{style:{display:'flex'},dangerouslySetInnerHTML:{__html:'<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>'}})),
           ctaStyle: 'height:32px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:0;color:var(--violet);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:6px',
           menuOpen: this.state.mandateMenuId===m.id,
-          ctaLabel: m.hasChecklist?'View Checklist':'Create Checklist',
+          ctaLabel: m.hasChecklist?'View Playbook':'Create Playbook',
           ctaMenuColor: m.hasChecklist?'rgba(16,23,33,.94)':'var(--violet)',
           onToggleMenu:(e)=>this.toggleMandateMenu(m.id,e),
           onMenuCta:(e)=>{ try{e.stopPropagation();}catch(_){}; this.setState({mandateMenuId:null}); this.openMandate(m.id); },
@@ -1555,7 +1555,7 @@ class Component extends DCLogic {
         V.onMActionEnter = ()=>this.setState(s=>s.mActionResizing?null:{mActionHover:true});
         V.onMActionLeave = ()=>this.setState(s=>s.mActionResizing?null:{mActionHover:false});
         V.onMActionDown = (e)=>this.startActionResize(e);
-        const LABELS=['Mandate / Developer','Status','Task Progress','Total Tasks','In Progress Tasks','Blkd Tasks','Overdue Tasks','Done Tasks','Pending Tasks','Unassigned Tasks','P&L Head','Last Updated','Type','Onboarding Date'];
+        const LABELS=['Mandate / Developer','Status','Task Progress','Total Tasks','In Progress Tasks','Blkd Tasks','Overdue Tasks','Completed Tasks','Pending Tasks','Unassigned Tasks','P&L Head','Last Updated','Type','Onboarding Date'];
         const CENTER=[false,false,false,true,true,true,true,true,true,true,false,false,false,false];
         V.headerCols = LABELS.map((label,i)=>({
           label, key:'hc'+i,
@@ -1780,7 +1780,7 @@ class Component extends DCLogic {
       V.mHeaderHasTasks = pr.total>0; V.mHeaderNoTasks = !pr.total;
       const _cf=st.celebFreeze;
       V.mHeaderStats = !pr.total ? [] : [
-        {label:'Done', val:c.completed, color:'var(--emerald)', mark:'done'},
+        {label:'Completed', val:c.completed, color:'var(--emerald)', mark:'done'},
         {label:'Blocked', val:c.blocked, color:'var(--red)', mark:'blocked'},
         {label:'In Progress', val:c.inprog, color:'#2f6fdb', mark:'wip'},
         {label:'Pending', val:c.notstarted, color:'#8a8f98', mark:'pending'},
@@ -1866,7 +1866,7 @@ class Component extends DCLogic {
       }
 
       V.clSearch=st.clSearch; V.onClSearch=e=>this.setState({clSearch:e.target.value}); V.onClSearchV=v=>this.setState({clSearch:v});
-      V.clSearchPlaceholder=isDirect?'Search tasks across mandates':'Search tasks in this checklist';
+      V.clSearchPlaceholder=isDirect?'Search tasks across mandates':'Search tasks in this playbook';
       V.sortValue=st.sort; V.onSort=e=>this.setState({sort:e.target.value});
       V.sortOptions=[{value:'start',label:'Start date'},{value:'due',label:'Due date'},{value:'revised',label:'Revised date'},{value:'status',label:'Status'},{value:'priority',label:'Priority'},{value:'spoc',label:'SPOC / Owner'},{value:'workstream',label:'Workstream'}];
       V.clSortOpen=!!st.clSortOpen;
@@ -1941,7 +1941,7 @@ class Component extends DCLogic {
           // BSM / Dev use the same calendar affordance to set a revised date (with a mandatory reason).
           canEditDue: canEditDateCell, showDueIcon: !locked,
           dueEditing: st.dueEdit===t.id, dueViewMode: st.dueEdit!==t.id,
-          dueTitle: canEditDueReal ? 'Click to change due date' : canEditRevisedInline ? 'Click to set a revised date' : locked ? 'Completed and locked — reopen to change the date.' : (m&&m.closed) ? 'Mandate is launched — the checklist is locked.' : '',
+          dueTitle: canEditDueReal ? 'Click to change due date' : canEditRevisedInline ? 'Click to set a revised date' : locked ? 'Completed and locked — reopen to change the date.' : (m&&m.closed) ? 'Mandate is launched — the playbook is locked.' : '',
           onDueClick: canEditDateCell ? ((e)=>this.startDueEdit(t.id,e,canEditDueReal?t.due:(t.revised||t.due))) : (()=>{}),
           dueCellStyle:'font-size:12px;font-weight:600;padding:2px 6px;margin:-2px -6px;border-radius:5px;'+(canEditDateCell?'display:inline-flex;align-items:center;gap:7px;cursor:pointer;':'display:inline-block;')+'color:rgba(16,23,33,.94)',
           dueHoverStyle: canEditDateCell ? 'background:var(--violet);color:var(--violet-lightest)' : '',
@@ -2367,7 +2367,7 @@ class Component extends DCLogic {
           V.wsDDOptions=this.categoryNames().map(w=>({value:w,label:w})).concat([{value:'__add_new_category__',label:'+ Add New'}]);
           V.prioDDOptions=[{value:'high',label:'High'},{value:'medium',label:'Medium'},{value:'low',label:'Low'}];
           V.spocDDOptions=[{value:'',label:'Select employee…'}].concat(this.OWNERS.map(o=>({value:o,label:o})));
-          V.statusDDOptions=[{value:'unassigned',label:'Unassigned'},{value:'not_started',label:'Pending'},{value:'in_progress',label:'In Progress'},{value:'blocked',label:'Blocked'},{value:'completed',label:'Done'}];
+          V.statusDDOptions=[{value:'unassigned',label:'Unassigned'},{value:'not_started',label:'Pending'},{value:'in_progress',label:'In Progress'},{value:'blocked',label:'Blocked'},{value:'completed',label:'Completed'}];
           const _sr=(n,label,stt)=>{const bg=stt==='active'?'#6161FF':stt==='done'?'#E8E8FF':'#EDEDED';const fg=stt==='active'?'#fff':stt==='done'?'#6161FF':'#9FA6B0';const txt=stt==='todo'?'#9FA6B0':'#101721';return React.createElement('div',{key:n,style:{display:'flex',alignItems:'center',gap:12}},React.createElement('div',{style:{width:28,height:28,borderRadius:'50%',background:bg,color:fg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flex:'none'}},stt==='done'?'\u2713':String(n)),React.createElement('div',{style:{fontSize:13.5,fontWeight:600,color:txt}},label));};
           V.addRailNode=React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:14}},_sr(1,'Task details',_astep>1?'done':'active'),React.createElement('div',{style:{width:2,height:16,background:'#E8E8FF',marginLeft:13,borderRadius:2}}),_sr(2,'Schedule & ownership',_astep===2?'active':'todo'));
         }
@@ -2462,7 +2462,7 @@ class Component extends DCLogic {
         V.newCategoryInputStyle='width:100%;height:46px;box-sizing:border-box;border:1px solid '+(V.hasNewCategoryError?'var(--red)':'#E0E0E0')+';border-radius:4px;padding:0 16px;font:500 14px/18px Graphik,Inter,system-ui,sans-serif;outline:0;color:rgba(16,23,33,.94);background:#fff';
         V.prioDDOptions=[{value:'high',label:'High'},{value:'medium',label:'Medium'},{value:'low',label:'Low'}];
         V.spocDDOptions=[{value:'',label:'Select employee…'}].concat(this.OWNERS.map(o=>({value:o,label:o})));
-        V.statusDDOptions=(d.primary?[]:[{value:'unassigned',label:'Unassigned'}]).concat([{value:'not_started',label:'Pending'},{value:'in_progress',label:'In Progress'},{value:'blocked',label:'Blocked'},{value:'completed',label:'Done'}]);
+        V.statusDDOptions=(d.primary?[]:[{value:'unassigned',label:'Unassigned'}]).concat([{value:'not_started',label:'Pending'},{value:'in_progress',label:'In Progress'},{value:'blocked',label:'Blocked'},{value:'completed',label:'Completed'}]);
         V.deptDDOptions=[{value:'',label:'Select department'}].concat(['Technology','Marketing','Strategic Development Initiative','CEO Office','Operations','Sales','Chairman Office','Legal','Admin','CTO Office','Call Center','Research','Corporate Sales','Vice Chairman Office','Finance','Transaction Services','HR','Transport'].map(x=>({value:x,label:x})));
         V.today=this.NOW;
         V.wsOptions=this.WS; V.ownerOptions=this.OWNERS;
@@ -2525,7 +2525,7 @@ class Component extends DCLogic {
             React.createElement('svg',{width:17,height:17,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.6,strokeLinecap:'round',strokeLinejoin:'round'},
               React.createElement('path',{key:'a',d:'M3 21h18M6 21V8l6-4 6 4v13'}),
               React.createElement('path',{key:'b',d:'M10 21v-5h4v5'})))),
-        trailing:React.createElement('span',{style:{fontSize:11,fontWeight:600,color:'#b06a00',background:'#FFF4E0',border:'1px solid #FFE0B0',padding:'4px 9px',borderRadius:5,whiteSpace:'nowrap'}},'Checklist pending')
+        trailing:React.createElement('span',{style:{fontSize:11,fontWeight:600,color:'#b06a00',background:'#FFF4E0',border:'1px solid #FFE0B0',padding:'4px 9px',borderRadius:5,whiteSpace:'nowrap'}},'Playbook pending')
       }));
       // step 2
       const cm=w.mandateId&&this.mandate(w.mandateId);
@@ -2536,9 +2536,9 @@ class Component extends DCLogic {
       V.clwPreviewStandard=w.method==='standard'; V.clwPreviewBlank=w.method==='blank';
       const tpl=this.stdTemplateTasks();
       V.clwPreviewTasks=tpl.map(t=>({ws:t.ws,name:t.name}));
-      V.clwPreviewHint=w.method==='standard'?('These '+tpl.length+' tasks will be added to '+(cm?cm.name:'the mandate')+' in the Unassigned bucket. You can edit every task after adding.'):('Review before creating '+(cm?cm.name:'the mandate')+'\u2019s checklist.');
+      V.clwPreviewHint=w.method==='standard'?('These '+tpl.length+' tasks will be added to '+(cm?cm.name:'the mandate')+' in the Unassigned bucket. You can edit every task after adding.'):('Review before creating '+(cm?cm.name:'the mandate')+'\u2019s playbook.');
       // footer primary
-      V.clwPrimaryLabel=w.step===3?(w.method==='standard'?'Add tasks':'Create checklist'):(w.step===1?'Next: Choose Method for Checklist':'Final Step: Preview Task');
+      V.clwPrimaryLabel=w.step===3?(w.method==='standard'?'Add tasks':'Create playbook'):(w.step===1?'Next: Choose Method for Playbook':'Final Step: Preview Task');
       V.clwPrimaryStyle='height:40px;padding:0 20px;background:var(--violet);border:0;color:#fff;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit';
     }
     V.onCancelModal=()=>this.cancelModal();
