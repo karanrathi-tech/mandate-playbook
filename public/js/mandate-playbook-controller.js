@@ -48,7 +48,7 @@ class Component extends DCLogic {
       landingSearch:'', landingFilter:'all', fLaunch:'all', fOwner:'all', fType:'all', landingView:'grid', tasksOnlyFilter:true, directSel:null, directOpen:false,
       mSortKey:'none', mSortOpen:false,
       clSearch:'', fDue:'all', fStatus:'all', fPrio:'all', fMine:false, sort:'start', collapsed:{}, clView:'board', dueHoverId:null, rowHoverId:null, selTasks:{},
-      analyticsOpen:false, fTaskWs:'all', fTaskOwner:'all', fOverdueRange:'all',
+      analyticsOpen:false, fTaskWs:'all', fTaskOwner:'all', fOwnerOverdueOnly:false, fOverdueRange:'all', fBlockedRange:'all', fRevisedRange:'all', overdueOwnersOpen:false, overdueOwnersSearch:'', unassignedDepartmentsOpen:false, unassignedDepartmentsSearch:'',
       drawer:null, // {mode:'view'|'add'|'edit', taskId}
       drawerTab:'details', addStep:1,
       draft:null,
@@ -1617,7 +1617,47 @@ class Component extends DCLogic {
       const hasCl=isDirect?!dAllNoChecklist:m.hasChecklist;
       const _pageIds=isDirect?dIds:this.scopedMandates(r,rn).filter(mm=>!st.gfSel||st.gfSel[mm.id]).map(mm=>mm.id);
       let _pageTasks=this.tasks.filter(t=>_pageIds.includes(t.mandateId)); if(r==='dev') _pageTasks=_pageTasks.filter(t=>t.external && this.isMine(t));
-      const anTotal=_pageTasks.length;
+      const _matchesActiveFilters=(t,ignore)=>{
+        if(ignore!=='due'&&st.fDue==='overdue'&&!this.isOverdue(t)) return false;
+        if(ignore!=='due'&&st.fDue==='today'&&this.dueBucket(t)!=='today') return false;
+        if(ignore!=='due'&&st.fDue==='week'&&!(this.dueBucket(t)==='week'||this.dueBucket(t)==='today')) return false;
+        if(ignore!=='status'&&st.fStatus!=='all'&&t.status!==st.fStatus) return false;
+        if(st.fPrio!=='all'&&t.prio!==st.fPrio) return false;
+        if(st.fMine&&!this.isMine(t)) return false;
+        if(ignore!=='workstream'&&st.fTaskWs!=='all'&&t.ws!==st.fTaskWs) return false;
+        if(ignore!=='owner'&&st.fTaskOwner!=='all'){
+          if(st.fTaskOwner==='__unassigned__'){ if(t.primary&&t.primary!=='Unassigned') return false; }
+          else if(t.primary!==st.fTaskOwner) return false;
+        }
+        if(ignore!=='owner'&&st.fOwnerOverdueOnly&&!this.isOverdue(t)) return false;
+        if(ignore!=='due'&&st.fDue==='overdue'&&st.fOverdueRange!=='all'){
+          const d=this.overdueDays(t);
+          if(st.fOverdueRange==='le7'&&d>7) return false;
+          if(st.fOverdueRange==='gt7'&&d<=7) return false;
+          if(st.fOverdueRange==='gt10'&&d<=10) return false;
+          if(st.fOverdueRange==='5to10'&&(d<5||d>10)) return false;
+          if(st.fOverdueRange==='1to4'&&(d<1||d>4)) return false;
+        }
+        if(ignore!=='blockedRange'&&st.fStatus==='blocked'&&st.fBlockedRange!=='all'){
+          const d=Math.max(this.overdueDays(t),0);
+          if(st.fBlockedRange==='lt_week'&&d>7) return false;
+          if(st.fBlockedRange==='8_15'&&(d<8||d>15)) return false;
+          if(st.fBlockedRange==='15_30'&&(d<16||d>30)) return false;
+          if(st.fBlockedRange==='gt_month'&&d<=30) return false;
+        }
+        if(ignore!=='revisedRange'&&st.fRevisedRange!=='all'){
+          if(!t.revised) return false;
+          const d=this.daysBetween(t.due,t.revised);
+          if(d<=0) return false;
+          if(st.fRevisedRange==='Less than a week'&&d>7) return false;
+          if(st.fRevisedRange==='7-15 days'&&(d<8||d>15)) return false;
+          if(st.fRevisedRange==='15-30 days'&&(d<16||d>30)) return false;
+          if(st.fRevisedRange==='More than a month'&&d<=30) return false;
+        }
+        const q=(st.clSearch||'').trim().toLowerCase();
+        return !q||((t.name||'')+' '+(t.stage||'')+' '+(t.primary||'')).toLowerCase().includes(q);
+      };
+      const _analyticsTasks=_pageTasks.filter(_matchesActiveFilters);
       V.showAnalytics = hasCl && _pageTasks.length>0;
       V.analyticsExpanded = !!st.analyticsOpen;
       V.analyticsCollapsed = !st.analyticsOpen;
@@ -1625,50 +1665,74 @@ class Component extends DCLogic {
       V.onToggleAnalytics=()=>this.setState(s=>({analyticsOpen:!s.analyticsOpen}));
       V.analyticsChevronStyle='transition:transform .15s ease;transform:rotate('+(st.analyticsOpen?180:0)+'deg)';
       if(_pageTasks.length>0){
-        const mts=_pageTasks;
+        const mts=_analyticsTasks;
+        // Faceted chart sources: a chart keeps its complete option set by
+        // ignoring only the filter that chart owns. Every other active filter
+        // still cross-filters it, and the board/list/timeline keep using mts.
+        const summaryTasks=_pageTasks.filter(t=>_matchesActiveFilters(t,'status'));
+        const dueTasks=_pageTasks.filter(t=>_matchesActiveFilters(t,'due'));
+        const ownerTasks=_pageTasks.filter(t=>_matchesActiveFilters(t,'owner'));
+        const blockedRangeTasks=_pageTasks.filter(t=>_matchesActiveFilters(t,'blockedRange'));
+        const revisedRangeTasks=_pageTasks.filter(t=>_matchesActiveFilters(t,'revisedRange'));
+        const workstreamTasks=_pageTasks.filter(t=>_matchesActiveFilters(t,'workstream'));
+        const anTotal=summaryTasks.length;
         const setStatusF=(v)=>()=>this.setState(s=>({fStatus:s.fStatus===v?'all':v}));
-        const setWsF=(v)=>()=>this.setState(s=>({fTaskWs:s.fTaskWs===v?'all':v}));
-        const setOwnerF=(v)=>()=>this.setState(s=>({fTaskOwner:s.fTaskOwner===v?'all':v}));
+        const setWsF=(v)=>()=>this.setState(s=>{ const reset=s.fTaskWs===v&&s.fStatus==='unassigned'; return {fTaskWs:reset?'all':v,fStatus:reset?'all':'unassigned'}; });
+        const setOwnerF=(v)=>()=>this.setState(s=>{
+          const reset=s.fTaskOwner===v&&s.fOwnerOverdueOnly;
+          return {fTaskOwner:reset?'all':v, fOwnerOverdueOnly:!reset, fDue:reset?'all':'overdue', fOverdueRange:'all'};
+        });
         const setOverdueF=(range)=>()=>this.setState(s=>({fDue:(s.fDue==='overdue'&&s.fOverdueRange===range)?'all':'overdue', fOverdueRange:(s.fDue==='overdue'&&s.fOverdueRange===range)?'all':range}));
+        const setBlockedF=(range)=>()=>this.setState(s=>{ const reset=s.fStatus==='blocked'&&s.fBlockedRange===range; return {fStatus:reset?'all':'blocked',fBlockedRange:reset?'all':range}; });
+        const setRevisedF=(range)=>()=>this.setState(s=>({fRevisedRange:s.fRevisedRange===range?'all':range}));
         const setDueF=(v)=>()=>this.setState(s=>({fDue:s.fDue===v?'all':v}));
         const rowStyle=(active)=>'display:flex;align-items:center;gap:7px;padding:3px 6px;border-radius:6px;cursor:pointer;'+(active?'background:#F0F0FF':'');
         const barRow=(active)=>'cursor:pointer;border-radius:6px;padding:4px 6px;'+(active?'background:#F0F0FF':'');
         const isPending=(t)=>t.status==='not_started';
         // ---- shared metrics ----
-        const nCompleted=mts.filter(t=>t.status==='completed').length;
-        const nInprog=mts.filter(t=>t.status==='in_progress').length;
-        const nBlocked=mts.filter(t=>t.status==='blocked').length;
-        const nPending=mts.filter(t=>isPending(t)).length;
-        const nOverdue=mts.filter(t=>this.isOverdue(t)).length;
-        const nUnassigned=mts.filter(t=>t.status==='unassigned').length;
-        // 5.10.3 Top Pending Owners (pending + overdue per owner)
-        const ownerNames=[...new Set(mts.map(t=>t.primary).filter(Boolean))];
-        const ownerStats=ownerNames.map(n=>({n, pending:mts.filter(t=>t.primary===n&&isPending(t)).length, overdue:mts.filter(t=>t.primary===n&&this.isOverdue(t)).length}))
-          .filter(o=>o.pending+o.overdue>0).sort((a,b)=>(b.pending+b.overdue)-(a.pending+a.overdue)).slice(0,5);
-        const ownerMax=Math.max(...ownerStats.map(o=>o.pending+o.overdue),1);
+        const nCompleted=summaryTasks.filter(t=>t.status==='completed').length;
+        const nInprog=summaryTasks.filter(t=>t.status==='in_progress').length;
+        const nBlocked=summaryTasks.filter(t=>t.status==='blocked').length;
+        const nPending=summaryTasks.filter(t=>isPending(t)).length;
+        const nOverdue=ownerTasks.filter(t=>this.isOverdue(t)).length;
+        const nSummaryUnassigned=summaryTasks.filter(t=>t.status==='unassigned').length;
+        const nUnassigned=workstreamTasks.filter(t=>t.status==='unassigned').length;
+        // 5.10.3 Overdue Task Breakdown — group overdue tasks by owner and keep
+        // ownerless overdue work visible as an explicit Unassigned entry.
+        const overdueOwnerKey=(t)=>(!t.primary||t.primary==='Unassigned')?'__unassigned__':t.primary;
+        const overdueOwnerKeys=[...new Set(ownerTasks.filter(t=>this.isOverdue(t)).map(overdueOwnerKey))];
+        const ownerStatsAll=overdueOwnerKeys.map(key=>{
+          const overdue=ownerTasks.filter(t=>this.isOverdue(t)&&overdueOwnerKey(t)===key).length;
+          return {key, n:key==='__unassigned__'?'Unassigned':key, total:overdue, overdue};
+        }).filter(o=>o.total>0).sort((a,b)=>b.total-a.total);
+        const overdueUnassigned=ownerStatsAll.find(o=>o.key==='__unassigned__');
+        const ownerStats=(overdueUnassigned?[overdueUnassigned]:[])
+          .concat(ownerStatsAll.filter(o=>o.key!=='__unassigned__').slice(0,overdueUnassigned?2:3))
+          .sort((a,b)=>b.total-a.total);
+        const ownerMax=Math.max(...ownerStats.map(o=>o.total),1);
         // 5.10.4 Revised Timeline — bucket tasks with a revised date by how far it shifted from the due date
-        const revisedTasks=mts.filter(t=>t.revised);
-        const revBucket=t=>{ const d=Math.abs(this.daysBetween(t.due,t.revised)); if(d<=7) return '≤7 days'; if(d<=15) return '7–15 days'; if(d<=30) return '15–30 days'; if(d<=60) return '30–60 days'; return '>60 days'; };
-        const revOrder=['≤7 days','7–15 days','15–30 days','30–60 days','>60 days'];
+        const revisedTasks=revisedRangeTasks.filter(t=>t.revised&&this.daysBetween(t.due,t.revised)>0);
+        const revBucket=t=>{ const d=this.daysBetween(t.due,t.revised); if(d<=7) return 'Less than a week'; if(d<=15) return '7-15 days'; if(d<=30) return '15-30 days'; return 'More than a month'; };
+        const revOrder=['Less than a week','7-15 days','15-30 days','More than a month'];
         const deptStats=revOrder.map(ws=>({ws, pending:revisedTasks.filter(t=>revBucket(t)===ws).length, overdue:0})).filter(d=>d.pending>0);
         const deptMax=Math.max(...deptStats.map(d=>d.pending+d.overdue),1);
         // 5.10.5 Blockers (bucket blocked tasks by age)
-        const blockedTasks=mts.filter(t=>t.status==='blocked');
+        const blockedTasks=blockedRangeTasks.filter(t=>t.status==='blocked');
+        const nBlockedTasks=blockedTasks.length;
         const blkAge=(t)=>Math.max(this.overdueDays(t),0);
         const blkBuckets=[
-          {k:'b1', label:'Blocked < 3 days', short:'<3d', test:d=>d<3},
-          {k:'b2', label:'Blocked 3–7 days', short:'3–7d', test:d=>d>=3&&d<7},
-          {k:'b3', label:'Blocked 7–15 days', short:'7–15d', test:d=>d>=7&&d<15},
-          {k:'b4', label:'Blocked 15–30 days', short:'15–30d', test:d=>d>=15&&d<30},
-          {k:'b5', label:'Blocked > 30 days', short:'>30d', test:d=>d>=30},
-        ].map(b=>({label:b.label, short:b.short, count:blockedTasks.filter(t=>b.test(blkAge(t))).length}));
+          {k:'lt_week', label:'Blocked for less than a week', short:'< 1 week', test:d=>d<=7},
+          {k:'8_15', label:'Blocked for 8-15 days', short:'8-15 days', test:d=>d>=8&&d<=15},
+          {k:'15_30', label:'Blocked for 15-30 days', short:'15-30 days', test:d=>d>=16&&d<=30},
+          {k:'gt_month', label:'Blocked for more than a month', short:'> 1 month', test:d=>d>30},
+        ].map(b=>({k:b.k,label:b.label,short:b.short,count:blockedTasks.filter(t=>b.test(blkAge(t))).length}));
         // 5.10.6 On-Time Completion %
         const completedTasks=mts.filter(t=>t.status==='completed');
         const lateTasks=completedTasks.filter(t=>t.revised && this.daysBetween(t.due,t.revised)>0);
         const onTimeN=completedTasks.length-lateTasks.length;
         const onTimePct=completedTasks.length?Math.round(onTimeN/completedTasks.length*100):0;
         const avgDelay=lateTasks.length?Math.round(lateTasks.reduce((a,t)=>a+this.daysBetween(t.due,t.revised),0)/lateTasks.length):0;
-        const topOwnerLoad=ownerStats.length?ownerStats[0].pending+ownerStats[0].overdue:0;
+        const topOwnerLoad=ownerStats.length?ownerStats[0].total:0;
         const topDeptLoad=deptStats.length?deptStats[0].pending+deptStats[0].overdue:0;
 
         // ---- collapsed compact chips (one per 5.10 KPI) ----
@@ -1684,7 +1748,7 @@ class Component extends DCLogic {
           {label:'All Tasks', ico:_icoAll, color:'var(--violet)', val:anTotal, total:anTotal, barStyle:mkBar(anTotal,anTotal,'var(--violet)'), onClick:setStatusF('all')},
           {label:'Overdue', ico:_icoOverdue, color:'var(--red)', val:nOverdue, total:anTotal, barStyle:mkBar(nOverdue,anTotal,'var(--red)'), onClick:setDueF('overdue')},
           {label:'Blocked', ico:_icoBlocked, color:'#E8833A', val:nBlocked, total:anTotal, barStyle:mkBar(nBlocked,anTotal,'#E8833A'), onClick:setStatusF('blocked')},
-          {label:'Unassigned', ico:_icoUnassigned, color:'#8a8f98', val:nUnassigned, total:anTotal, barStyle:mkBar(nUnassigned,anTotal,'#8a8f98'), onClick:setStatusF('unassigned')},
+          {label:'Unassigned', ico:_icoUnassigned, color:'#8a8f98', val:nSummaryUnassigned, total:anTotal, barStyle:mkBar(nSummaryUnassigned,anTotal,'#8a8f98'), onClick:setStatusF('unassigned')},
           {label:'Completed', ico:_icoDone, color:'var(--emerald)', val:nCompleted, total:anTotal, mark:'done', barStyle:mkBar(nCompleted,anTotal,'var(--emerald)'), onClick:setStatusF('completed')},
         ].map(x=>({...x, mark:x.mark||'', chipStyle:chipBase, iconNode:React.createElement('span',{style:{display:'flex'},dangerouslySetInnerHTML:{__html:x.ico}}), iconWrap:'width:32px;height:32px;border-radius:8px;background:#F2F2F2;color:'+x.color+';display:flex;align-items:center;justify-content:center;flex:none'}));
 
@@ -1703,55 +1767,92 @@ class Component extends DCLogic {
           {k:'in_progress', label:'In Progress', color:'#2f6fdb', count:nInprog},
           {k:'blocked', label:'Blocked', color:'#F3AA07', count:nBlocked},
           {k:'__pending', label:'Pending', color:'#8a8f98', count:nPending},
-          {k:'unassigned', label:'Unassigned', color:'#b8bcc4', count:nUnassigned},
+          {k:'unassigned', label:'Unassigned', color:'#b8bcc4', count:nSummaryUnassigned},
         ].filter(x=>x.count>0);
         V.anSummary={ total:anTotal, donutStyle:halfDonut(cap7(sumSegs),anTotal),
-          rows: sumSegs.map(x=>({label:x.label, count:x.count, mark:(x.k==='completed'?'completed':''), onClick: x.k==='__pending'?setStatusF('not_started'):setStatusF(x.k), rowStyle:rowStyle(st.fStatus===x.k), dotStyle:'width:8px;height:8px;border-radius:50%;background:'+x.color+';flex:none'}))
-            .concat(nOverdue>0?[{label:'Overdue', count:nOverdue, mark:'', onClick:setDueF('overdue'), rowStyle:rowStyle(st.fDue==='overdue'), dotStyle:'width:8px;height:8px;border-radius:2px;background:var(--red);flex:none'}]:[]) };
+          rows: sumSegs.map(x=>({label:x.label, count:x.count, mark:(x.k==='completed'?'completed':''), onClick: x.k==='__pending'?setStatusF('not_started'):setStatusF(x.k), rowStyle:rowStyle(st.fStatus===x.k), dotStyle:'width:8px;height:8px;border-radius:50%;background:'+x.color+';flex:none'})) };
 
         // 5.10.2 Upcoming vs Overdue — vertical bars
         const uoRows=[
-          {label:'Due Today', short:'Today', color:'var(--violet)', count:mts.filter(t=>t.status!=='completed'&&this.dueBucket(t)==='today').length, onClick:setDueF('today'), active:st.fDue==='today'},
-          {label:'Due This Week', short:'This Week', color:'#1F69FF', count:mts.filter(t=>t.status!=='completed'&&!this.isOverdue(t)&&this.daysBetween(this.NOW,this.effDate(t))>=1&&this.daysBetween(this.NOW,this.effDate(t))<=7).length, onClick:setDueF('week'), active:st.fDue==='week'},
-          {label:'Overdue ≤ 7 days', short:'OD ≤7d', color:'#E8833A', count:mts.filter(t=>this.isOverdue(t)&&this.overdueDays(t)<=7).length, onClick:setOverdueF('le7'), active:st.fDue==='overdue'&&st.fOverdueRange==='le7'},
-          {label:'Overdue > 7 days', short:'OD >7d', color:'var(--red)', count:mts.filter(t=>this.isOverdue(t)&&this.overdueDays(t)>7).length, onClick:setOverdueF('gt7'), active:st.fDue==='overdue'&&st.fOverdueRange==='gt7'},
+          {label:'Due Today', short:'Today', color:'var(--violet)', count:dueTasks.filter(t=>t.status!=='completed'&&this.dueBucket(t)==='today').length, onClick:setDueF('today'), active:st.fDue==='today'},
+          {label:'Due This Week', short:'This Week', color:'#1F69FF', count:dueTasks.filter(t=>t.status!=='completed'&&!this.isOverdue(t)&&this.daysBetween(this.NOW,this.effDate(t))>=1&&this.daysBetween(this.NOW,this.effDate(t))<=7).length, onClick:setDueF('week'), active:st.fDue==='week'},
+          {label:'Overdue ≤ 7 days', short:'OD ≤7d', color:'#E8833A', count:dueTasks.filter(t=>this.isOverdue(t)&&this.overdueDays(t)<=7).length, onClick:setOverdueF('le7'), active:st.fDue==='overdue'&&st.fOverdueRange==='le7'},
+          {label:'Overdue > 7 days', short:'OD >7d', color:'var(--red)', count:dueTasks.filter(t=>this.isOverdue(t)&&this.overdueDays(t)>7).length, onClick:setOverdueF('gt7'), active:st.fDue==='overdue'&&st.fOverdueRange==='gt7'},
         ];
         const uoMax=Math.max(...uoRows.map(x=>x.count),1);
         V.anUpOverdue={ cols: uoRows.slice(0,5).map(x=>({label:x.label, short:x.short, count:x.count, onClick:x.onClick, colStyle:colBase(x.active),
           barStyle:'width:24px;height:'+segH(x.count,uoMax)+'px;background:'+x.color+';border-radius:4px 4px 0 0'})) };
 
-        // 5.10.3 Top Pending Owners — stacked vertical bars
-        const anOwnerRows=ownerStats.slice(0,5).filter(o=>(o.pending+o.overdue)>0);
+        // 5.10.3 Overdue Task Breakdown — overdue tasks by owner
+        const anOwnerRows=ownerStats.filter(o=>o.total>0);
         V.anSummaryFilterActive = (st.fStatus && st.fStatus!=='all') || st.fDue==='overdue';
         V.onResetSummaryFilter = ()=>this.setState({fStatus:'all', fDue:'all', fOverdueRange:'all'});
-        V.anDeptFilterActive = st.fTaskWs && st.fTaskWs!=='all';
-        V.onResetDeptFilter = ()=>this.setState({fTaskWs:'all'});
-        V.anBlockersFilterActive = st.fStatus==='blocked';
-        V.onResetBlockersFilter = ()=>this.setState({fStatus:'all'});
-        V.anTopOwners={ has:anOwnerRows.length>0, empty:anOwnerRows.length===0, cols: anOwnerRows.map(o=>({ full:o.n, short:o.n.split(' ')[0], count:o.pending+' · '+o.overdue, onClick:setOwnerF(o.n), colStyle:colBase(st.fTaskOwner===o.n),
+        V.anDeptFilterActive = st.fRevisedRange!=='all';
+        V.onResetDeptFilter = ()=>this.setState({fRevisedRange:'all'});
+        V.anUnassignedFilterActive = st.fTaskWs!=='all'&&st.fStatus==='unassigned';
+        V.onResetUnassignedFilter = ()=>this.setState({fTaskWs:'all',fStatus:'all'});
+        V.anBlockersFilterActive = st.fStatus==='blocked'&&st.fBlockedRange!=='all';
+        V.onResetBlockersFilter = ()=>this.setState({fStatus:'all',fBlockedRange:'all'});
+        V.anOwnerFilterActive = st.fTaskOwner!=='all'&&st.fOwnerOverdueOnly&&st.fDue==='overdue';
+        V.onResetOwnerFilter = ()=>this.setState({fTaskOwner:'all',fOwnerOverdueOnly:false,fDue:'all',fOverdueRange:'all'});
+        V.anHasMoreOwners = ownerStatsAll.length>ownerStats.length;
+        V.anAllOwnerCount = ownerStatsAll.length;
+        V.onOpenOverdueOwners = ()=>this.setState({overdueOwnersOpen:true,overdueOwnersSearch:''});
+        V.overdueOwnersModalOpen = !!st.overdueOwnersOpen;
+        V.overdueOwnersSearch = st.overdueOwnersSearch||'';
+        V.onOverdueOwnersSearch = (e)=>this.setState({overdueOwnersSearch:e.target.value});
+        V.onCloseOverdueOwners = ()=>this.setState({overdueOwnersOpen:false,overdueOwnersSearch:''});
+        const overdueOwnersQ=V.overdueOwnersSearch.trim().toLowerCase();
+        const overdueOwnersVisible=ownerStatsAll.filter(o=>!overdueOwnersQ||o.n.toLowerCase().includes(overdueOwnersQ));
+        V.overdueOwnersHasResults=overdueOwnersVisible.length>0;
+        V.overdueOwnersNoResults=!V.overdueOwnersHasResults;
+        V.overdueOwnersRows=overdueOwnersVisible.map(o=>({
+          name:o.n, count:o.total,
+          active:st.fTaskOwner===o.key&&st.fOwnerOverdueOnly&&st.fDue==='overdue',
+          rowStyle:'width:100%;display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid '+((st.fTaskOwner===o.key&&st.fOwnerOverdueOnly&&st.fDue==='overdue')?'var(--violet)':'#E8E8EC')+';border-radius:8px;background:'+((st.fTaskOwner===o.key&&st.fOwnerOverdueOnly&&st.fDue==='overdue')?'#F5F5FF':'#fff')+';cursor:pointer;font-family:inherit;text-align:left',
+          onPick:()=>this.setState({overdueOwnersOpen:false,overdueOwnersSearch:'',fTaskOwner:o.key,fOwnerOverdueOnly:true,fDue:'overdue',fOverdueRange:'all'})
+        }));
+        const ownerColStyle=(active)=>'flex:'+(anOwnerRows.length<=5?'1 1 0':'0 0 82px')+';max-width:100px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;cursor:pointer;border-radius:6px;padding:4px 3px;min-width:68px;'+(active?'background:#F0F0FF':'');
+        V.anTopOwners={ total:nOverdue, has:anOwnerRows.length>0, empty:anOwnerRows.length===0, cols: anOwnerRows.map(o=>({ full:o.n, short:o.n, count:o.total, onClick:setOwnerF(o.key), colStyle:ownerColStyle(st.fTaskOwner===o.key),
           oBar:'width:24px;height:'+segH(o.overdue,ownerMax)+'px;background:var(--red);border-radius:'+(o.overdue?'4px 4px 0 0':'0'),
-          pBar:'width:24px;height:'+segH(o.pending,ownerMax)+'px;background:#B9BDC6;border-radius:'+(o.overdue?'0':'4px 4px 0 0')})) };
+          pBar:'display:none'})) };
 
         // 5.10.4 Status by Department — vertical bars of open (pending+overdue) tasks
         const deptTop=deptStats.slice(0,5);
-        V.anByDept={ has:deptTop.length>0, empty:deptTop.length===0, total:revisedTasks.length, cols: deptTop.map(d=>({ full:d.ws, short:d.ws, count:d.pending, onClick:null, colStyle:colBase(false).replace('cursor:pointer','cursor:default'),
+        const revisedColStyle=(active)=>'flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;cursor:pointer;border-radius:6px;padding:4px 2px;'+(active?'background:#F0F0FF':'');
+        V.anByDept={ has:deptTop.length>0, empty:deptTop.length===0, total:revisedTasks.length, cols: deptTop.map(d=>({ full:d.ws, short:d.ws, count:d.pending, onClick:setRevisedF(d.ws), colStyle:revisedColStyle(st.fRevisedRange===d.ws),
           oBar:'width:28px;height:'+segH(d.pending,deptMax)+'px;background:#E8E8FF;border-radius:4px 4px 0 0', pBar:'display:none' })) };
 
         // 5.10.5 Blockers — horizontal bars by age bucket
         const blkMax=Math.max(...blkBuckets.map(b=>b.count),1);
-        const blkColors=['#F3E0A0','#F3AA07','#E8833A','#D9541E','var(--red)'];
-        V.anBlockers={ total:nBlocked, has:nBlocked>0, empty:nBlocked===0, cols: blkBuckets.map((b,i)=>({label:b.label, short:b.short, count:b.count, onClick:setStatusF('blocked'),
-          rowStyle:'display:flex;align-items:center;gap:8px;padding:2px 4px;border-radius:6px;cursor:pointer',
+        const blkColors=['#F3E0A0','#F3AA07','#E8833A','var(--red)'];
+        V.anBlockers={ total:nBlockedTasks, has:nBlockedTasks>0, empty:nBlockedTasks===0, cols: blkBuckets.map((b,i)=>({label:b.label, short:b.short, count:b.count, onClick:setBlockedF(b.k),
+          rowStyle:'width:100%;display:flex;align-items:center;gap:6px;padding:2px;border-radius:6px;cursor:pointer;overflow:hidden;'+(st.fStatus==='blocked'&&st.fBlockedRange===b.k?'background:#F0F0FF':''),
           barStyle:'width:'+Math.max(b.count/blkMax*100,3)+'%;height:100%;background:'+blkColors[i]+';border-radius:5px'})) };
 
         // 5.10.5b Unassigned by Department
         const uPalette=['var(--violet)','#1F69FF','#0EA5A4','#F3AA07','#E8407A','#8a8f98','#7C4DFF'];
-        const unByDept=this.WS.map(ws=>({ws, count:mts.filter(t=>t.ws===ws&&t.status==='unassigned').length}))
+        const unByDept=this.WS.map(ws=>({ws, count:workstreamTasks.filter(t=>t.ws===ws&&t.status==='unassigned').length}))
           .filter(d=>d.count>0).sort((a,b)=>b.count-a.count).map((d,i)=>({...d,label:d.ws,color:uPalette[i%uPalette.length]}));
-        const unByDeptC=cap7(unByDept);
+        const unByDeptTop=unByDept.slice(0,5);
+        V.anHasMoreUnassignedDepartments=unByDept.length>5;
+        V.onOpenUnassignedDepartments=()=>this.setState({unassignedDepartmentsOpen:true,unassignedDepartmentsSearch:''});
+        V.unassignedDepartmentsModalOpen=!!st.unassignedDepartmentsOpen;
+        V.unassignedDepartmentsSearch=st.unassignedDepartmentsSearch||'';
+        V.onUnassignedDepartmentsSearch=(e)=>this.setState({unassignedDepartmentsSearch:e.target.value});
+        V.onCloseUnassignedDepartments=()=>this.setState({unassignedDepartmentsOpen:false,unassignedDepartmentsSearch:''});
+        const unassignedDepartmentsQ=V.unassignedDepartmentsSearch.trim().toLowerCase();
+        const unassignedDepartmentsVisible=unByDept.filter(d=>!unassignedDepartmentsQ||d.label.toLowerCase().includes(unassignedDepartmentsQ));
+        V.unassignedDepartmentsHasResults=unassignedDepartmentsVisible.length>0;
+        V.unassignedDepartmentsNoResults=!V.unassignedDepartmentsHasResults;
+        V.unassignedDepartmentsRows=unassignedDepartmentsVisible.map(d=>({
+          name:d.label,count:d.count,active:st.fTaskWs===d.ws,
+          rowStyle:'width:100%;display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid '+(st.fTaskWs===d.ws?'var(--violet)':'#E8E8EC')+';border-radius:8px;background:'+(st.fTaskWs===d.ws?'#F5F5FF':'#fff')+';cursor:pointer;font-family:inherit;text-align:left',
+          onPick:()=>this.setState({unassignedDepartmentsOpen:false,unassignedDepartmentsSearch:'',fTaskWs:d.ws,fStatus:'unassigned'})
+        }));
         V.anUnassigned={ total:nUnassigned, has:unByDept.length>0, empty:unByDept.length===0,
-          donutStyle:halfDonut(unByDeptC.map(x=>({color:x.color,count:x.count})),nUnassigned),
-          rows: unByDeptC.map(x=>({label:x.label, count:x.count, onClick:(x.ws?setWsF(x.ws):null), rowStyle:rowStyle(st.fTaskWs===x.ws), dotStyle:'width:8px;height:8px;border-radius:50%;background:'+x.color+';flex:none'})) };
+          donutStyle:halfDonut(unByDept.map(x=>({color:x.color,count:x.count})),nUnassigned),
+          rows: unByDeptTop.map(x=>({label:x.label, count:x.count, onClick:setWsF(x.ws), rowStyle:rowStyle(st.fTaskWs===x.ws), dotStyle:'width:8px;height:8px;border-radius:50%;background:'+x.color+';flex:none'})) };
 
         // 5.10.6 On-Time Completion % — half donut
         const otSegs=[{label:'On time',color:'var(--emerald)',count:onTimeN},{label:'Late',color:'var(--red)',count:lateTasks.length}];
@@ -1889,10 +1990,13 @@ class Component extends DCLogic {
       const prioMatch=(t)=> st.fPrio==='all' ? true : t.prio===st.fPrio;
       const mineMatch=(t)=> st.fMine ? this.isMine(t) : true;
       const wsFMatch=(t)=> st.fTaskWs==='all' ? true : t.ws===st.fTaskWs;
-      const ownerFMatch=(t)=> st.fTaskOwner==='all' ? true : t.primary===st.fTaskOwner;
+      const ownerFMatch=(t)=> st.fTaskOwner==='all' ? true : st.fTaskOwner==='__unassigned__' ? (!t.primary||t.primary==='Unassigned') : t.primary===st.fTaskOwner;
+      const ownerOverdueMatch=(t)=> !st.fOwnerOverdueOnly || this.isOverdue(t);
       const overdueRangeMatch=(t)=>{ if(st.fDue!=='overdue'||st.fOverdueRange==='all') return true; const d=this.overdueDays(t); if(st.fOverdueRange==='le7') return d<=7; if(st.fOverdueRange==='gt7') return d>7; if(st.fOverdueRange==='gt10') return d>10; if(st.fOverdueRange==='5to10') return d>=5&&d<=10; if(st.fOverdueRange==='1to4') return d>=1&&d<=4; return true; };
+      const blockedRangeMatch=(t)=>{ if(st.fStatus!=='blocked'||st.fBlockedRange==='all') return true; const d=Math.max(this.overdueDays(t),0); if(st.fBlockedRange==='lt_week') return d<=7; if(st.fBlockedRange==='8_15') return d>=8&&d<=15; if(st.fBlockedRange==='15_30') return d>=16&&d<=30; if(st.fBlockedRange==='gt_month') return d>30; return true; };
+      const revisedRangeMatch=(t)=>{ if(st.fRevisedRange==='all') return true; if(!t.revised) return false; const d=this.daysBetween(t.due,t.revised); if(d<=0) return false; if(st.fRevisedRange==='Less than a week') return d<=7; if(st.fRevisedRange==='7-15 days') return d>=8&&d<=15; if(st.fRevisedRange==='15-30 days') return d>=16&&d<=30; if(st.fRevisedRange==='More than a month') return d>30; return true; };
       V.dueValue=st.fDue; V.onDueFilter=(e)=>this.setState({fDue:e.target.value}); V.onDueFilterV=(v)=>this.setState({fDue:v}); V.dueTinted=st.fDue!=='all';
-      V.statusValue=st.fStatus; V.onStatusFilter=(e)=>this.setState({fStatus:e.target.value}); V.onStatusFilterV=(v)=>this.setState({fStatus:v}); V.statusTinted=st.fStatus!=='all';
+      V.statusValue=st.fStatus; V.onStatusFilter=(e)=>this.setState({fStatus:e.target.value,fBlockedRange:'all'}); V.onStatusFilterV=(v)=>this.setState({fStatus:v,fBlockedRange:'all'}); V.statusTinted=st.fStatus!=='all';
       V.prioValue=st.fPrio; V.onPrioFilter=(e)=>this.setState({fPrio:e.target.value}); V.onPrioFilterV=(v)=>this.setState({fPrio:v}); V.prioTinted=st.fPrio!=='all';
       V.mineActive=st.fMine; V.mineToggleStyle = st.fMine
         ? 'height:38px;padding:0 14px;background:var(--violet);border:1px solid var(--violet);color:#fff;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit'
@@ -1903,7 +2007,7 @@ class Component extends DCLogic {
       V.statusOptionsFilter=[{value:'all',label:'Status: All'},{value:'unassigned',label:'Unassigned'},{value:'not_started',label:'Pending'},{value:'in_progress',label:'In Progress'},{value:'blocked',label:'Blocked'},{value:'completed',label:'Completed'}];
 
       const q=st.clSearch.toLowerCase();
-      let filtered=all.filter(t=>dueMatch(t)&&statusMatch(t)&&prioMatch(t)&&mineMatch(t)&&wsFMatch(t)&&ownerFMatch(t)&&overdueRangeMatch(t)).filter(t=> !q || (t.name+t.stage+t.primary).toLowerCase().includes(q));
+      let filtered=all.filter(_matchesActiveFilters);
 
       const inner=(a,b)=>{ switch(st.sort){ case 'start':return (a.start||'').localeCompare(b.start||''); case 'due':return a.due.localeCompare(b.due); case 'revised':return this.effDate(a).localeCompare(this.effDate(b)); case 'status':{const o={blocked:0,in_progress:1,not_started:2,completed:3};return o[a.status]-o[b.status];} case 'priority':{const o={high:0,medium:1,low:2};return o[a.prio]-o[b.prio];} case 'spoc':return a.primary.localeCompare(b.primary); default:return 0; } };
       const sortFn=(a,b)=> ((this.canDrag(b)?1:0)-(this.canDrag(a)?1:0)) || inner(a,b);
@@ -2116,7 +2220,7 @@ class Component extends DCLogic {
       V.checklistZeroTasks = (V.clListView||V.clGanttView) && hasCl && all.length===0;
       V.noResults = (V.clListView||V.clGanttView) && hasCl && all.length>0 && groups.length===0;
       V.allMandatesHeading = isDirect ? 'All Mandates Task ('+filtered.length+')' : '';
-      V.onClearFilters=()=>this.setState({fDue:'all',fStatus:'all',fPrio:'all',fMine:false,clSearch:'',fTaskWs:'all',fTaskOwner:'all',fOverdueRange:'all'});
+      V.onClearFilters=()=>this.setState({fDue:'all',fStatus:'all',fPrio:'all',fMine:false,clSearch:'',fTaskWs:'all',fTaskOwner:'all',fOwnerOverdueOnly:false,fOverdueRange:'all',fBlockedRange:'all',fRevisedRange:'all'});
 
       // ---- kanban board ----
       const ro = m?!!m.closed:false;
@@ -2206,7 +2310,7 @@ class Component extends DCLogic {
       const groupBy=st.boardGroup||'none';
       V.boardNoGroupHeading = (groupBy==='none') ? (isDirect?'All Mandates Task ('+filtered.length+')':'') : '';
       V.boardGroup=groupBy; V.onBoardGroup=(e)=>this.setBoardGroup(e.target.value); V.onBoardGroupV=(v)=>this.setBoardGroup(v); V.boardGroupTinted=groupBy!=='none';
-      V.boardGroupOptions=[{value:'none',label:'Group: None'},{value:'mandate',label:'Group: Mandate'},{value:'workstream',label:'Group: Workstream'},{value:'owner',label:'Group: Owner / SPOC'},{value:'priority',label:'Group: Priority'}];
+      V.boardGroupOptions=[{value:'none',label:'Group By: None'},{value:'mandate',label:'Group By: Mandate'},{value:'workstream',label:'Group By: Workstream'},{value:'owner',label:'Group By: Owner / SPOC'},{value:'priority',label:'Group By: Priority'}];
       let lanes;
       if(groupBy==='mandate'){
         let mSource=filtered;
