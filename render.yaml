@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: mandate-playbook
+    runtime: ruby
+    plan: free
+    region: singapore
+    buildCommand: bundle install
+    startCommand: bundle exec ruby server.rb
+    healthCheckPath: /
+    envVars:
+      - key: BIND_ADDRESS
+        value: 0.0.0.0
+      - key: MANDATE_PLAYBOOK_API_TOKEN
+        sync: false
+      - key: WHATSAPP_PROVIDER
+        value: twilio
+      - key: WHATSAPP_TO
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false
+      - key: TWILIO_MESSAGING_SERVICE_SID
+        sync: false
+      - key: TWILIO_WHATSAPP_CONTENT_SID
+        sync: false
+      - key: TWILIO_WHATSAPP_TO
+        sync: false

@@ -15,6 +15,12 @@ module MandatePlaybook
       end
     end
 
+    def message_status(message_id:)
+      raise "Delivery-status checks are currently available for Twilio only." unless provider == "twilio"
+
+      TwilioWhatsappClient.new.message_status(message_id: message_id).merge(provider: "twilio")
+    end
+
     private
 
     def provider

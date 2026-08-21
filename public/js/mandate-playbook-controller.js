@@ -361,17 +361,18 @@ class Component extends DCLogic {
     if(!err && d.fail) err='Task could not be saved. The server returned an error (500). Please retry.';
     if(err){ this.setState(s=>({draft:{...s.draft,error:err,validationAttempted:true}})); this.toast(err,'error'); return; }
     const subtasks=(d.subs||[]).filter(s=>s&&s.name&&s.name.trim()).map((s,i)=>{ const owner=this.EMPLOYEES.find(e=>e.name===s.owner); return {id:'ns'+i,name:s.name.trim(),status:'not_started',primary:s.owner||'',owner:s.owner||'',taskOwner:s.owner||'',primaryOwnerId:owner?owner.id:''}; });
-    let celebrateId=null; let addedId=null;
+    let celebrateId=null; let addedId=null; let savedTask=null;
     if(this.state.drawer.mode==='add'){
       const owner=this.EMPLOYEES.find(e=>e.name===d.primary);
       const t={id:'t'+Date.now(), mandateId:(d.mandateId||this.state.mandateId), dept:d.dept||'', ws:d.ws, name:d.name.trim(), stage:'', start:d.start||this.NOW, status:d.status||'unassigned', prio:d.prio, due:d.due, revised:d.revised, primaryOwnerId:owner?owner.id:'', primary:d.primary, supporting:[], external:!!d.external, desc:d.desc, remark:d.remark, closeRemark:d.closeRemark, subtasks};
-      this.tasks.push(t); addedId=t.id;
+      this.tasks.push(t); addedId=t.id; savedTask=t;
       // adding the first task implicitly creates the checklist for this mandate
       const _m=this.mandate(d.mandateId||this.state.mandateId); if(_m && !_m.hasChecklist){ _m.hasChecklist=true; }
       this.toast('Task added successfully','success');
       if(d.status==='completed') celebrateId=t.id;
     } else {
       const t=this.tasks.find(x=>x.id===this.state.drawer.taskId);
+      savedTask=t;
       const wasDone=t.status==='completed'; const wasBlk=t.status==='blocked';
       if(editable){ const owner=this.EMPLOYEES.find(e=>e.name===d.primary); if(t.due!==d.due){ t.dueChanges=t.dueChanges||[]; t.dueChanges.push({from:t.due,to:d.due,by:this.roleName()||'Team Lead',when:this.fmt(this.realToday())+' · just now'}); } Object.assign(t,{ws:d.ws,name:d.name,prio:d.prio,due:d.due,revised:d.revised,status:d.status,primaryOwnerId:owner?owner.id:'',primary:d.primary,desc:d.desc,closeRemark:d.closeRemark,dept:d.dept,external:!!d.external}); if((d.remark||'').trim()) t.remark=d.remark.trim(); if(d.status==='blocked'){ t.blockerReason=d.remark.trim(); t.blockerOwner=d.blockerOwner||''; t.blockerOwnerId=d.blockerOwnerId||''; } }
       if(statusOnly){
@@ -395,6 +396,7 @@ class Component extends DCLogic {
       if(editable&&d.subs) t.subtasks=subtasks;
       this.toast('Task updated','success');
     }
+    if(savedTask&&(d.remark||'').trim()) this.sendAutomaticWhatsAppRemark(savedTask,d.remark.trim());
     if(celebrateId){ this._moveSeq=(this._moveSeq||0)+1; if(!this._moveOrder) this._moveOrder={}; this._moveOrder[celebrateId]=this._moveSeq; clearTimeout(this._jm); this._jm=setTimeout(()=>this.setState({justMovedId:null}),1400); }
     if(celebrateId){ this._moveAt=Date.now(); (this._movedIds=this._movedIds||{})[celebrateId]=1; }
     if(addedId){
@@ -831,18 +833,64 @@ class Component extends DCLogic {
   closeNudge(){ this.setState({nudge:null}); }
   setNudgeMsg(v){ this.setState(s=>({nudge:{...s.nudge, msg:v}})); }
   async sendAutomaticWhatsAppNudge(t,customMessage){
-    const response=await fetch('/api/notifications/whatsapp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ownerName:t.primary||'Task owner',taskName:t.name,dueDate:this.fmt(this.effDate(t)),message:(customMessage||'').trim()})});
+    const owner=this.taskOwnerForNotification(t);
+    if(!owner) throw new Error('WhatsApp was not sent because this task has no owner.');
+    const response=await fetch('/api/notifications/whatsapp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ownerName:owner.name,taskName:t.name,dueDate:this.fmt(this.effDate(t)),message:(customMessage||'').trim()})});
     const result=await response.json().catch(()=>({}));
     if(!response.ok) throw new Error(result.error||'WhatsApp delivery failed.');
-    return result;
+    return this.waitForWhatsAppDelivery(result);
+  }
+  async waitForWhatsAppDelivery(result){
+    if(!result||result.provider!=='twilio'||!result.messageId||result.delivered) return result;
+    const terminal=['delivered','read','failed','undelivered','canceled'];
+    let latest=result;
+    for(let attempt=0;attempt<4;attempt+=1){
+      await new Promise(resolve=>setTimeout(resolve,2000));
+      const response=await fetch('/api/notifications/whatsapp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'status',messageId:result.messageId})});
+      const checked=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(checked.error||'WhatsApp delivery status could not be checked.');
+      latest=checked;
+      const status=String(checked.status||'').toLowerCase();
+      if(terminal.includes(status)){
+        if(['failed','undelivered','canceled'].includes(status)){
+          const code=checked.errorCode?(' (Twilio error '+checked.errorCode+')'):'';
+          throw new Error((checked.error||('WhatsApp delivery '+status+'.'))+code);
+        }
+        return checked;
+      }
+    }
+    return latest;
+  }
+  taskOwnerForNotification(t){
+    if(!t) return null;
+    const storedName=String(t.primary||'').trim();
+    const byId=t.primaryOwnerId&&this.EMPLOYEES.find(e=>String(e.id)===String(t.primaryOwnerId));
+    const byName=storedName&&storedName!=='Unassigned'&&this.EMPLOYEES.find(e=>e.name===storedName);
+    const owner=byId||byName;
+    if(owner) return owner;
+    return storedName&&storedName!=='Unassigned'?{name:storedName}:null;
+  }
+  async sendAutomaticWhatsAppRemark(t,remark){
+    const message=(remark||'').trim();
+    if(!t||!message) return;
+    try{
+      const owner=this.taskOwnerForNotification(t);
+      if(!owner) throw new Error('WhatsApp was not sent because this task has no owner.');
+      const result=await this.sendAutomaticWhatsAppNudge(t,message);
+      const delivered=['delivered','read'].includes(String(result.status||'').toLowerCase());
+      console.info('WhatsApp remark notification', {taskId:t.id, owner:owner.name, status:result.status, delivered, messageId:result.messageId});
+    }catch(error){
+      console.error('WhatsApp remark notification failed', {taskId:t&&t.id, error:error&&error.message?error.message:String(error)});
+    }
   }
   async sendNudge(){ const n=this.state.nudge; if(!n) return; const t=this.tasks.find(x=>x.id===n.taskId); if(!t) return;
-    try{ const result=await this.sendAutomaticWhatsAppNudge(t,n.msg); const delivered=['delivered','read'].includes(String(result.status||'').toLowerCase()); this.toast(delivered?'WhatsApp message delivered to '+t.primary:'WhatsApp message queued for '+t.primary,delivered?'success':'default'); this.setState({nudge:null}); }
-    catch(error){ this.toast(error&&error.message?error.message:'WhatsApp delivery failed.','error'); } }
+    try{ const result=await this.sendAutomaticWhatsAppNudge(t,n.msg); console.info('WhatsApp nudge notification', {taskId:t.id,status:result.status,delivered:!!result.delivered,messageId:result.messageId}); }
+    catch(error){ console.error('WhatsApp nudge notification failed', {taskId:t.id,error:error&&error.message?error.message:String(error)}); }
+    finally{ this.setState({nudge:null}); } }
   async sendDrawerNudge(id,remark){ const t=this.tasks.find(x=>x.id===id); if(!t) return;
     if(!remark||!remark.trim()){ this.setState(s=>({draft:{...s.draft, error:'Add a remark before nudging.'}})); return; }
-    try{ const result=await this.sendAutomaticWhatsAppNudge(t,remark); const delivered=['delivered','read'].includes(String(result.status||'').toLowerCase()); this.toast(delivered?'WhatsApp message delivered to '+t.primary:'WhatsApp message queued for '+t.primary,delivered?'success':'default'); }
-    catch(error){ this.toast(error&&error.message?error.message:'WhatsApp delivery failed.','error'); } }
+    try{ const result=await this.sendAutomaticWhatsAppNudge(t,remark); console.info('WhatsApp drawer nudge notification', {taskId:t.id,status:result.status,delivered:!!result.delivered,messageId:result.messageId}); }
+    catch(error){ console.error('WhatsApp drawer nudge notification failed', {taskId:t.id,error:error&&error.message?error.message:String(error)}); } }
   confirmTransfer(){ const tr=this.state.transfer; if(!tr||!tr.pickedId) return;
     const t=this.tasks.find(x=>x.id===tr.taskId); const emp=this.EMPLOYEES.find(e=>e.id===tr.pickedId);
     if(t&&emp && !this.ownerColors[emp.name]) this.ownerColors[emp.name]='var(--gray-dark)';
@@ -913,21 +961,23 @@ class Component extends DCLogic {
     t.revised=date;
     this.setState({statusModal:null});
     this.toast('Revised date updated to '+this.fmt(date),'success');
+    this.sendAutomaticWhatsAppRemark(t,reason);
   }
   reduceMotion(){ try{ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(_){ return false; } }
-  applyStatus(id,status,extra){ const t=this.tasks.find(x=>x.id===id); if(!t) return; const wasCompleted=t.status==='completed'; const wasBlocked=t.status==='blocked'; t.status=status;
+  applyStatus(id,status,extra){ const t=this.tasks.find(x=>x.id===id); if(!t) return; const wasCompleted=t.status==='completed'; const wasBlocked=t.status==='blocked'; t.status=status; let addedRemark='';
     // record move recency so the just-moved card sits at the top of its column (pushing the rest down)
     this._moveSeq=(this._moveSeq||0)+1; if(!this._moveOrder) this._moveOrder={}; this._moveOrder[id]=this._moveSeq;
-    if(extra.closingRemark) t.remark=extra.closingRemark;
-    if(extra.blockerReason) t.remark='Blocker: '+extra.blockerReason+(extra.blockerOwner?(' — owner '+extra.blockerOwner):'');
-    if(extra.reopenReason) t.remark=extra.reopenReason;
+    if(extra.closingRemark){ t.remark=extra.closingRemark; addedRemark=t.remark; }
+    if(extra.blockerReason){ t.remark='Blocker: '+extra.blockerReason+(extra.blockerOwner?(' — owner '+extra.blockerOwner):''); addedRemark=t.remark; }
+    if(extra.reopenReason){ t.remark=extra.reopenReason; addedRemark=t.remark; }
     clearTimeout(this._jm); this._moveAt=Date.now(); (this._movedIds=this._movedIds||{})[id]=1; this.setState({statusModal:null, dragTaskId:null, justMovedId:id});
     this._jm=setTimeout(()=>this.setState({justMovedId:null}),1400);
     if(status==='completed' && !wasCompleted) this.celebrate(id);
     if(status==='blocked' && !wasBlocked){ this._blockedSound(); this._blockedPulse(id); }
     const STL={not_started:'Pending',unassigned:'Unassigned',in_progress:'In Progress',blocked:'Blocked',completed:'Completed'};
     const kind = status==='completed' ? 'success' : status==='blocked' ? 'error' : 'move';
-    this.toast('Moved to '+(STL[status]||status), kind); }
+    this.toast('Moved to '+(STL[status]||status), kind);
+    if(addedRemark) this.sendAutomaticWhatsAppRemark(t,addedRemark); }
   // Directed celebration: a single cracker launches from the just-completed card in the
   // Done column, arcs up to the header "Done" stat, bursts there, then the Done number
   // ticks up and its bar fills. The header Done value is held frozen until the burst lands.

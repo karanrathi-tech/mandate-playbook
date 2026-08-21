@@ -1,10 +1,36 @@
 import { env } from "cloudflare:workers";
 
 interface WhatsAppRequest {
+  action?: string;
+  messageId?: string;
   ownerName?: string;
   taskName?: string;
   dueDate?: string;
   message?: string;
+}
+
+async function getTwilioStatus(runtime: WhatsAppEnvironment, messageId: string) {
+  const accountSid = runtime.TWILIO_ACCOUNT_SID;
+  const authToken = runtime.TWILIO_AUTH_TOKEN;
+  if (!accountSid || !authToken) throw new Error("Twilio WhatsApp is not configured.");
+  if (!messageId) throw new Error("WhatsApp message ID is required.");
+  const response = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages/${encodeURIComponent(messageId)}.json`,
+    { headers: { Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}` } },
+  );
+  const result = (await response.json().catch(() => ({}))) as {
+    sid?: string; status?: string; error_code?: number | null; error_message?: string | null; message?: string;
+  };
+  if (!response.ok) throw new Error(result.message || "Twilio WhatsApp status check failed.");
+  const status = result.status || "unknown";
+  return {
+    delivered: ["delivered", "read"].includes(status.toLowerCase()),
+    provider: "twilio",
+    messageId: result.sid,
+    status,
+    errorCode: result.error_code,
+    error: result.error_message,
+  };
 }
 
 interface WhatsAppEnvironment {
@@ -155,6 +181,14 @@ async function sendWithMeta(runtime: WhatsAppEnvironment, data: MessageData) {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as WhatsAppRequest;
+    const runtime = env as unknown as WhatsAppEnvironment;
+    if (body.action === "status") {
+      const result = await getTwilioStatus(runtime, clean(body.messageId, 100));
+      if (["delivered", "read", "failed", "undelivered", "canceled"].includes(result.status.toLowerCase())) {
+        console.info("WhatsApp delivery", result);
+      }
+      return Response.json(result);
+    }
     const data: MessageData = {
       ownerName: clean(body.ownerName, 100),
       taskName: clean(body.taskName, 200),
@@ -168,7 +202,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const runtime = env as unknown as WhatsAppEnvironment;
     const provider = (runtime.WHATSAPP_PROVIDER || "twilio").trim().toLowerCase();
     if (!(["twilio", "meta"] as string[]).includes(provider)) {
       return Response.json(

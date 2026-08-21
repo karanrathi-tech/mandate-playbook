@@ -19,7 +19,7 @@ module MandatePlaybook
 
       uri = URI("#{API_BASE}/#{URI.encode_www_form_component(account_sid)}/Messages.json")
       request = Net::HTTP::Post.new(uri)
-      request["Authorization"] = "Basic #{Base64.strict_encode64("#{account_sid}:#{auth_token}")}" 
+      request["Authorization"] = "Basic #{Base64.strict_encode64("#{account_sid}:#{auth_token}")}"
       request["Content-Type"] = "application/x-www-form-urlencoded;charset=UTF-8"
       form = {
         "To" => whatsapp_address(Config.value("TWILIO_WHATSAPP_TO") || "+917045706453"),
@@ -47,6 +47,33 @@ module MandatePlaybook
       end
 
       { delivered: %w[delivered read].include?(result["status"]), messageId: result["sid"], status: result["status"] }
+    end
+
+    def message_status(message_id:)
+      account_sid = required("TWILIO_ACCOUNT_SID")
+      auth_token = required("TWILIO_AUTH_TOKEN")
+      sid = message_id.to_s.strip
+      raise "WhatsApp message ID is required." if sid.empty?
+
+      uri = URI("#{API_BASE}/#{URI.encode_www_form_component(account_sid)}/Messages/#{URI.encode_www_form_component(sid)}.json")
+      request = Net::HTTP::Get.new(uri)
+      request["Authorization"] = "Basic #{Base64.strict_encode64("#{account_sid}:#{auth_token}")}"
+      response = Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 10, read_timeout: 30) do |http|
+        http.request(request)
+      end
+      result = JSON.parse(response.body)
+      unless response.code.to_i.between?(200, 299)
+        raise(result["message"] || "Twilio WhatsApp status check failed.")
+      end
+
+      status = result["status"].to_s
+      {
+        delivered: %w[delivered read].include?(status),
+        messageId: result["sid"],
+        status: status,
+        errorCode: result["error_code"],
+        error: result["error_message"],
+      }
     end
 
     private

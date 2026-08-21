@@ -77,6 +77,16 @@ module MandatePlaybook
         end
 
         body = JSON.parse(request.body.to_s)
+        if body["action"] == "status"
+          result = WhatsappClient.new.message_status(message_id: body["messageId"])
+          status = result[:status].to_s.downcase
+          if %w[delivered read failed undelivered canceled].include?(status)
+            warn JSON.generate({ event: "whatsapp_delivery", provider: result[:provider], messageId: result[:messageId], status: status, delivered: result[:delivered], errorCode: result[:errorCode], error: result[:error] })
+          end
+          JsonResponse.write(response, result)
+          next
+        end
+
         owner_name = body["ownerName"].to_s.strip[0, 100]
         task_name = body["taskName"].to_s.strip[0, 200]
         due_date = body["dueDate"].to_s.strip[0, 30]

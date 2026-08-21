@@ -15,7 +15,7 @@ if ARGV.delete("--check")
 end
 
 server = WEBrick::HTTPServer.new(
-  BindAddress: "127.0.0.1",
+  BindAddress: ENV.fetch("BIND_ADDRESS", "127.0.0.1"),
   Port: Integer(ENV.fetch("PORT", "8766")),
   DocumentRoot: MandatePlaybook::Config::PUBLIC_ROOT,
   AccessLog: [],
