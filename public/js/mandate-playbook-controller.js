@@ -884,7 +884,7 @@ class Component extends DCLogic {
     }
   }
   async sendNudge(){ const n=this.state.nudge; if(!n) return; const t=this.tasks.find(x=>x.id===n.taskId); if(!t) return;
-    try{ const result=await this.sendAutomaticWhatsAppNudge(t,n.msg); console.info('WhatsApp nudge notification', {taskId:t.id,status:result.status,delivered:!!result.delivered,messageId:result.messageId}); }
+    try{ const result=await this.sendAutomaticWhatsAppNudge(t,n.msg); console.info('WhatsApp nudge notification', {taskId:t.id,status:result.status,delivered:!!result.delivered,messageId:result.messageId}); this.toast('Nudge sent to '+((this.taskOwnerForNotification(t)||{}).name||'task owner'),'success'); }
     catch(error){ console.error('WhatsApp nudge notification failed', {taskId:t.id,error:error&&error.message?error.message:String(error)}); }
     finally{ this.setState({nudge:null}); } }
   async sendDrawerNudge(id,remark){ const t=this.tasks.find(x=>x.id===id); if(!t) return;
